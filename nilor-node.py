@@ -24,7 +24,7 @@ class NilorFloats:
     RETURN_NAMES = ("floats",)
 
     FUNCTION = "test"
-    CATEGORY = "nilor-nodes/nilor-floats"
+    CATEGORY = "nilor-nodes"
 
     @staticmethod
     def interpolate_values(start, end, num_points):
@@ -64,7 +64,77 @@ class NilorFloats:
         return (my_floats,)
 
 
+class NilorIntToListOfBools:
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(s):
+        # Dictionary that defines input types for each field
+        return {
+            "required": {
+                "number_of_images": ("INT", {"forceInput": False}),
+            },
+        }
+
+    # Define return types and names for outputs of the node
+    RETURN_TYPES = ("BOOLEAN",)
+    RETURN_NAMES = ("booleans",)
+
+    FUNCTION = "boolify"
+    CATEGORY = "nilor-nodes"
+    OUTPUT_IS_LIST = (True,)
+
+    def boolify(self, number_of_images, max_images=10):
+        # Initializes the array with zeros
+        my_bools = [False] * max_images
+
+        for i in range(max_images):
+            # Set the boolean value to True if the index is less than the number of images
+            my_bools[i] = i < number_of_images
+
+        return (my_bools,)
+
+
+class NilorBoolFromListOfBools:
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(s):
+        # Dictionary that defines input types for each field
+        return {
+            "required": {
+                "booleans": ("BOOLEAN", {"forceInput": False}),
+                "index": ("INT", {"forceInput": False}),
+            },
+        }
+
+    # Define return types and names for outputs of the node
+    RETURN_TYPES = ("BOOLEAN",)
+    RETURN_NAMES = ("boolean",)
+
+    FUNCTION = "bool_by_index"
+    CATEGORY = "nilor-nodes"
+
+    INPUT_IS_LIST = True
+
+    def bool_by_index(self, booleans, index):
+        # Returns the boolean value at the given index
+        actual_index = index[0] if isinstance(index, list) else index
+        desired_bool = booleans[actual_index]
+        return [desired_bool]
+
+
 # Mapping class names to objects for potential export
-NODE_CLASS_MAPPINGS = {"Nilor Floats": NilorFloats}
+NODE_CLASS_MAPPINGS = {
+    "Nilor Floats": NilorFloats,
+    "Nilor Int To List Of Bools": NilorIntToListOfBools,
+    "Nilor Bool From List Of Bools": NilorBoolFromListOfBools,
+}
 # Mapping nodes to human-readable names
-NODE_DISPLAY_NAME_MAPPINGS = {"FirstNode": "My First Node"}
+NODE_DISPLAY_NAME_MAPPINGS = {
+    "FirstNode": "My First Node",
+    "SecondNode": "My Second Node",
+    "ThirdNode": "My Third Node",
+}
