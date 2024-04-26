@@ -1,4 +1,5 @@
 import math
+import random
 from scipy.interpolate import interp1d
 from numpy import linspace
 import numpy as np
@@ -83,6 +84,7 @@ class NilorIntToListOfBools:
 
     FUNCTION = "boolify"
     CATEGORY = "nilor-nodes"
+
     OUTPUT_IS_LIST = (True,)
 
     def boolify(self, number_of_images, max_images=10):
@@ -120,10 +122,85 @@ class NilorBoolFromListOfBools:
     INPUT_IS_LIST = True
 
     def bool_by_index(self, booleans, index):
-        # Returns the boolean value at the given index
         actual_index = index[0] if isinstance(index, list) else index
+
+        if actual_index < 0 or actual_index >= len(booleans):
+            raise ValueError("Index is outside the bounds of the array.")
+
+        # Returns the boolean value at the given index
         desired_bool = booleans[actual_index]
         return [desired_bool]
+
+class NilorIntFromListOfInts:
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(s):
+        # Dictionary that defines input types for each field
+        return {
+            "required": {
+                "ints": ("INT", {"forceInput": False}),
+                "index": ("INT", {"forceInput": False}),
+            },
+        }
+
+    # Define return types and names for outputs of the node
+    RETURN_TYPES = ("INT",)
+    RETURN_NAMES = ("int",)
+
+    FUNCTION = "int_by_index"
+    CATEGORY = "nilor-nodes"
+
+    INPUT_IS_LIST = True
+
+    def int_by_index(self, ints, index=0):
+        actual_index = index[0] if isinstance(index, list) else index
+
+        if actual_index < 0 or actual_index >= len(ints):
+            raise ValueError("Index is outside the bounds of the array.")
+
+        # Returns the int value at the given index
+        desired_int = ints[actual_index]
+        return [desired_int]
+
+class NilorListOfInts:
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(s):
+        # Dictionary that defines input types for each field
+        return {
+            "required": {
+                "min": ("INT", {"forceInput": False}, {"default": 0}),
+                "max": ("INT", {"forceInput": False}, {"default": 9}),
+                "shuffle": ("BOOLEAN", {"default": False}),  # Toggle to randomize order
+                "run_trigger": ("INT", {"default": 0}),  # Dummy input for caching issue
+            },
+        }
+
+    # Define return types and names for outputs of the node
+    RETURN_TYPES = ("INT",)
+    RETURN_NAMES = ("ints",)
+
+    FUNCTION = "int_list"
+    CATEGORY = "nilor-nodes"
+
+    OUTPUT_IS_LIST = (True,)
+
+    def int_list(self, run_trigger, min=1, max=10, shuffle=False):
+        if max < min:
+            raise ValueError("Input maximum is less than input minimum.")
+
+        # Create a list of sequential integers from min_value to max_value
+        ints_list = list(range(min, max + 1))
+
+        # Shuffle the list
+        if shuffle:
+            random.shuffle(ints_list)
+
+        return (ints_list,)
 
 
 # Mapping class names to objects for potential export
@@ -131,6 +208,8 @@ NODE_CLASS_MAPPINGS = {
     "Nilor Floats": NilorFloats,
     "Nilor Int To List Of Bools": NilorIntToListOfBools,
     "Nilor Bool From List Of Bools": NilorBoolFromListOfBools,
+    "Nilor Int From List Of Ints": NilorIntFromListOfInts,
+    "Nilor List of Ints": NilorListOfInts,
 }
 # Mapping nodes to human-readable names
 NODE_DISPLAY_NAME_MAPPINGS = {
