@@ -1,3 +1,4 @@
+import os
 import math
 import random
 from scipy.interpolate import interp1d
@@ -202,6 +203,40 @@ class NilorListOfInts:
 
         return (ints_list,)
 
+class NilorCountImagesInDirectory:
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(s):
+        # Dictionary that defines input types for each field
+        return {
+            "required": {
+                "directory": ("STRING", {"default": "X://path/to/images"}),
+            },
+        }
+
+    # Define return types and names for outputs of the node
+    RETURN_TYPES = ("INT",)
+    RETURN_NAMES = ("int",)
+
+    FUNCTION = "count_images_in_directory"
+    CATEGORY = "nilor-nodes"
+
+    INPUT_IS_LIST = False
+
+    def count_images_in_directory(self, directory):
+        if not os.path.isdir(directory):
+            raise FileNotFoundError(f"Directory '{directory} cannot be found.")
+
+        list_dir = []
+        list_dir = os.listdir(directory)
+        count = 0
+        for file in list_dir:
+            if file.endswith('.png'):
+                count += 1
+        
+        return [count]
 
 # Mapping class names to objects for potential export
 NODE_CLASS_MAPPINGS = {
@@ -210,6 +245,7 @@ NODE_CLASS_MAPPINGS = {
     "Nilor Bool From List Of Bools": NilorBoolFromListOfBools,
     "Nilor Int From List Of Ints": NilorIntFromListOfInts,
     "Nilor List of Ints": NilorListOfInts,
+    "Nilor Count Images In Directory": NilorCountImagesInDirectory,
 }
 # Mapping nodes to human-readable names
 NODE_DISPLAY_NAME_MAPPINGS = {
