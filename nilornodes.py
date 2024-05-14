@@ -233,7 +233,7 @@ class NilorCountImagesInDirectory:
         list_dir = os.listdir(directory)
         count = 0
         for file in list_dir:
-            if file.endswith('.png'):
+            if file.endswith('.png') or file.endswith('.jpeg') or file.endswith('.jpg'):
                 count += 1
         
         return [count]
