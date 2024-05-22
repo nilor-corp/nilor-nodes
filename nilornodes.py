@@ -277,13 +277,11 @@ class NilorSaveImageToHFDataset:
     ):
         # Save the image to the dataset
         metadata = PngInfo()
-        metadata.add_text("workflow", extra_pnginfo)
+        metadata.add_text("workflow", "testing, this should be png data")
         for i, img in enumerate(image):
             img_byte_arr = io.BytesIO()
             img.save(img_byte_arr, format="PNG", pnginfo=metadata)
             img_byte_arr = img_byte_arr.getvalue()
-            i = 255.0 * imageData.cpu().numpy()
-            img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
             now = datetime.now()
             date_string = now.strftime("%Y-%m-%d-%H-%M-%S")
             image_name = f"{filename_prefix}_{i}_{date_string}.png"
