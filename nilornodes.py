@@ -4,7 +4,7 @@ import random
 from scipy.interpolate import interp1d
 from numpy import linspace
 import numpy as np
-from huggingface_hub import HfAPi
+from huggingface_hub import HfApi
 from datetime import datetime
 
 
