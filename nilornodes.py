@@ -269,8 +269,8 @@ class NilorSaveImageToHFDataset:
         image,
         repository_id,
         filename_prefix="nilor_image",
-        prompt=NONE,
-        extra_pnginfo=NONE,
+        prompt=None,
+        extra_pnginfo=None,
     ):
         # Save the image to the dataset
         now = datetime.now()
