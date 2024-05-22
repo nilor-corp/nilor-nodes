@@ -282,7 +282,7 @@ class NilorSaveImageToHFDataset:
             image_name = f"{filename_prefix}_{i}_{date_string}.png"
             api = HfApi()
             api.upload_file(
-                path_or_fileobj=img,
+                path_or_fileobj=str.encode(imageData),
                 path_in_repo=image_name,
                 repo_id=repository_id,
                 repo_type="dataset",
