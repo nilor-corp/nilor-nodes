@@ -1,4 +1,5 @@
 import os
+import io
 import math
 import random
 from scipy.interpolate import interp1d
@@ -7,6 +8,7 @@ import numpy as np
 from huggingface_hub import HfApi
 from datetime import datetime
 from PIL import Image
+from PIL.PngImagePlugin import PngInfo
 
 
 class NilorFloats:
@@ -274,7 +276,12 @@ class NilorSaveImageToHFDataset:
         extra_pnginfo=None,
     ):
         # Save the image to the dataset
-        for imageData in image:
+        metadata = PngInfo()
+        metadata.add_text("workflow", extra_pnginfo)
+        for i, img in enumerate(image):
+            img_byte_arr = io.BytesIO()
+            img.save(img_byte_arr, format="PNG", pnginfo=metadata)
+            img_byte_arr = img_byte_arr.getvalue()
             i = 255.0 * imageData.cpu().numpy()
             img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
             now = datetime.now()
@@ -282,7 +289,7 @@ class NilorSaveImageToHFDataset:
             image_name = f"{filename_prefix}_{i}_{date_string}.png"
             api = HfApi()
             api.upload_file(
-                path_or_fileobj=str.encode(imageData),
+                path_or_fileobj=img_byte_arr,
                 path_in_repo=image_name,
                 repo_id=repository_id,
                 repo_type="dataset",
