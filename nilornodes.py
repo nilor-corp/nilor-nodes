@@ -6,6 +6,7 @@ from numpy import linspace
 import numpy as np
 from huggingface_hub import HfApi
 from datetime import datetime
+from PIL import Image
 
 
 class NilorFloats:
@@ -273,16 +274,19 @@ class NilorSaveImageToHFDataset:
         extra_pnginfo=None,
     ):
         # Save the image to the dataset
-        now = datetime.now()
-        date_string = now.strftime("%Y-%m-%d-%H-%M-%S")
-        image_name = f"{filename_prefix}_{date_string}.png"
-        api = HfApi()
-        api.upload_file(
-            path_or_fileobj=image,
-            path_in_repo=image_name,
-            repo_id=repository_id,
-            repo_type="dataset",
-        )
+        for imageData in image:
+            i = 255.0 * image.cpu().numpy()
+            img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
+            now = datetime.now()
+            date_string = now.strftime("%Y-%m-%d-%H-%M-%S")
+            image_name = f"{filename_prefix}_{i}_{date_string}.png"
+            api = HfApi()
+            api.upload_file(
+                path_or_fileobj=img,
+                path_in_repo=image_name,
+                repo_id=repository_id,
+                repo_type="dataset",
+            )
 
         return None
 
