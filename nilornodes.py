@@ -280,6 +280,7 @@ class NilorSaveImageToHFDataset:
         # Save the image to the dataset
         metadata = PngInfo()
         metadata.add_text("workflow", "testing, this should be png data")
+        results = list()
         for i, tensor in enumerate(image):
             data = 255.0 * tensor.cpu().numpy()
             img = Image.fromarray(np.clip(data, 0, 255).astype(np.uint8))
@@ -296,6 +297,9 @@ class NilorSaveImageToHFDataset:
                 repo_id=repository_id,
                 repo_type="dataset",
             )
+            results.append(image_name)
+
+        return {"ui": {"images": results}}
 
 
 # Mapping class names to objects for potential export
