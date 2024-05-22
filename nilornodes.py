@@ -253,7 +253,7 @@ class NilorSaveImageToHFDataset:
         return {
             "required": {
                 "image": ("IMAGE",),
-                "repository_id": ("STRING",),
+                # "repository_id": ("STRING",),
                 "filename_prefix": ("STRING", {"default": "nilor_image"}),
             },
             "hidden": {"prompt": "PROMPT", "extra_pnginfo": "EXTRA_PNGINFO"},
@@ -267,7 +267,7 @@ class NilorSaveImageToHFDataset:
     def save_image_to_hf_dataset(
         self,
         image,
-        repository_id,
+        # repository_id,
         filename_prefix="nilor_image",
         prompt=None,
         extra_pnginfo=None,
