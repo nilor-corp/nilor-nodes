@@ -4,6 +4,9 @@ import random
 from scipy.interpolate import interp1d
 from numpy import linspace
 import numpy as np
+from huggingface_hub import HfAPi
+from datetime import datetime
+
 
 
 class NilorFloats:
@@ -132,6 +135,7 @@ class NilorBoolFromListOfBools:
         desired_bool = booleans[actual_index]
         return [desired_bool]
 
+
 class NilorIntFromListOfInts:
     def __init__(self):
         pass
@@ -164,6 +168,7 @@ class NilorIntFromListOfInts:
         # Returns the int value at the given index
         desired_int = ints[actual_index]
         return [desired_int]
+
 
 class NilorListOfInts:
     def __init__(self):
@@ -203,6 +208,7 @@ class NilorListOfInts:
 
         return (ints_list,)
 
+
 class NilorCountImagesInDirectory:
     def __init__(self):
         pass
@@ -233,10 +239,47 @@ class NilorCountImagesInDirectory:
         list_dir = os.listdir(directory)
         count = 0
         for file in list_dir:
-            if file.endswith('.png') or file.endswith('.jpeg') or file.endswith('.jpg'):
+            if file.endswith(".png") or file.endswith(".jpeg") or file.endswith(".jpg"):
                 count += 1
-        
+
         return [count]
+
+
+class NilorSaveImageToHFDataset:
+    def __init__(self) -> None:
+        pass
+    
+    @classmethod
+    def INPUT_TYPES(s):
+      return {
+          "required": {
+            {"image": ("IMAGE",),
+            "repository_id": ("STRING", ),
+            "filename_prefix": ("STRING", {"default": "nilor_image"})},
+            "hidden": {"prompt": "PROMPT", "extra_pnginfo": "EXTRA_PNGINFO"},
+          }}
+    RETURN_TYPES = ()
+    FUNCTION = "save_image_to_hf_dataset"
+    OUTPUT_Node = True
+    CATEGORY = "nilor-nodes"
+
+    def save_image_to_hf_dataset(self, image, repository_id, filename_prefix="nilor_image", prompt=NONE, extra_pnginfo=NONE):
+        # Save the image to the dataset
+        now = datetime.now()
+        date_string = now.strftime("%Y-%m-%d-%H-%M-%S")
+        image_name = f"{filename_prefix}_{date_string}.png"
+        api = HfApi()
+        api.upload_file(
+            path_or_fileobj=image,
+            path_in_repo=image_name,
+            repo_id=repository_id,
+            repo_type="dataset",
+        )
+
+        return None
+        
+      
+
 
 # Mapping class names to objects for potential export
 NODE_CLASS_MAPPINGS = {
@@ -246,6 +289,7 @@ NODE_CLASS_MAPPINGS = {
     "Nilor Int From List Of Ints": NilorIntFromListOfInts,
     "Nilor List of Ints": NilorListOfInts,
     "Nilor Count Images In Directory": NilorCountImagesInDirectory,
+    "Nilor Save Image To HF Dataset": NilorSaveImageToHFDataset,
 }
 # Mapping nodes to human-readable names
 NODE_DISPLAY_NAME_MAPPINGS = {
