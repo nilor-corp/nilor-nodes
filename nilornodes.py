@@ -8,7 +8,6 @@ from huggingface_hub import HfAPi
 from datetime import datetime
 
 
-
 class NilorFloats:
     def __init__(self):
         pass
@@ -248,22 +247,31 @@ class NilorCountImagesInDirectory:
 class NilorSaveImageToHFDataset:
     def __init__(self) -> None:
         pass
-    
+
     @classmethod
     def INPUT_TYPES(s):
-      return {
-          "required": {
-            {"image": ("IMAGE",),
-            "repository_id": ("STRING", ),
-            "filename_prefix": ("STRING", {"default": "nilor_image"})},
+        return {
+            "required": {
+                "image": ("IMAGE",),
+                "repository_id": ("STRING",),
+                "filename_prefix": ("STRING", {"default": "nilor_image"}),
+            },
             "hidden": {"prompt": "PROMPT", "extra_pnginfo": "EXTRA_PNGINFO"},
-          }}
+        }
+
     RETURN_TYPES = ()
     FUNCTION = "save_image_to_hf_dataset"
     OUTPUT_Node = True
     CATEGORY = "nilor-nodes"
 
-    def save_image_to_hf_dataset(self, image, repository_id, filename_prefix="nilor_image", prompt=NONE, extra_pnginfo=NONE):
+    def save_image_to_hf_dataset(
+        self,
+        image,
+        repository_id,
+        filename_prefix="nilor_image",
+        prompt=NONE,
+        extra_pnginfo=NONE,
+    ):
         # Save the image to the dataset
         now = datetime.now()
         date_string = now.strftime("%Y-%m-%d-%H-%M-%S")
@@ -277,8 +285,6 @@ class NilorSaveImageToHFDataset:
         )
 
         return None
-        
-      
 
 
 # Mapping class names to objects for potential export
