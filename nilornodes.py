@@ -276,13 +276,13 @@ class NilorSaveImageToHFDataset:
         now = datetime.now()
         date_string = now.strftime("%Y-%m-%d-%H-%M-%S")
         image_name = f"{filename_prefix}_{date_string}.png"
-        # api = HfApi()
-        # api.upload_file(
-        #     path_or_fileobj=image,
-        #     path_in_repo=image_name,
-        #     repo_id=repository_id,
-        #     repo_type="dataset",
-        # )
+        api = HfApi()
+        api.upload_file(
+            path_or_fileobj=image,
+            path_in_repo=image_name,
+            repo_id=repository_id,
+            repo_type="dataset",
+        )
 
         return None
 
