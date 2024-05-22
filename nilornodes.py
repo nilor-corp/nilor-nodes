@@ -278,7 +278,9 @@ class NilorSaveImageToHFDataset:
         # Save the image to the dataset
         metadata = PngInfo()
         metadata.add_text("workflow", "testing, this should be png data")
-        for i, img in enumerate(image):
+        for i, tensor in enumerate(image):
+            data = 255.0 * tensor.cpu().numpy()
+            img = Image.fromarray(np.clip(data, 0, 255).astype(np.uint8))
             img_byte_arr = io.BytesIO()
             img.save(img_byte_arr, format="PNG", pnginfo=metadata)
             img_byte_arr = img_byte_arr.getvalue()
