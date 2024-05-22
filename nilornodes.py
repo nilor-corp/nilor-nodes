@@ -1,9 +1,14 @@
 import os
+import io
 import math
 import random
 from scipy.interpolate import interp1d
 from numpy import linspace
 import numpy as np
+from huggingface_hub import HfApi
+from datetime import datetime
+from PIL import Image
+from PIL.PngImagePlugin import PngInfo
 
 
 class NilorFloats:
@@ -132,6 +137,7 @@ class NilorBoolFromListOfBools:
         desired_bool = booleans[actual_index]
         return [desired_bool]
 
+
 class NilorIntFromListOfInts:
     def __init__(self):
         pass
@@ -164,6 +170,7 @@ class NilorIntFromListOfInts:
         # Returns the int value at the given index
         desired_int = ints[actual_index]
         return [desired_int]
+
 
 class NilorListOfInts:
     def __init__(self):
@@ -203,6 +210,7 @@ class NilorListOfInts:
 
         return (ints_list,)
 
+
 class NilorCountImagesInDirectory:
     def __init__(self):
         pass
@@ -233,10 +241,66 @@ class NilorCountImagesInDirectory:
         list_dir = os.listdir(directory)
         count = 0
         for file in list_dir:
-            if file.endswith('.png') or file.endswith('.jpeg') or file.endswith('.jpg'):
+            if file.endswith(".png") or file.endswith(".jpeg") or file.endswith(".jpg"):
                 count += 1
-        
+
         return [count]
+
+
+class NilorSaveImageToHFDataset:
+    def __init__(self) -> None:
+        pass
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "image": ("IMAGE",),
+                "repository_id": ("STRING", {"default": "nilor_dataset"}),
+                "hf_auth_token": ("STRING", {"default": "auth_token"}),
+                "filename_prefix": ("STRING", {"default": "nilor_image"}),
+            },
+            "hidden": {"prompt": "PROMPT", "extra_pnginfo": "EXTRA_PNGINFO"},
+        }
+
+    RETURN_TYPES = ()
+    FUNCTION = "save_image_to_hf_dataset"
+    OUTPUT_NODE = True
+    CATEGORY = "nilor-nodes"
+
+    def save_image_to_hf_dataset(
+        self,
+        image,
+        repository_id,
+        hf_auth_token,
+        filename_prefix="nilor_image",
+        prompt=None,
+        extra_pnginfo=None,
+    ):
+        # Save the image to the dataset
+        metadata = PngInfo()
+        metadata.add_text("workflow", "testing, this should be png data")
+        results = list()
+        for i, tensor in enumerate(image):
+            data = 255.0 * tensor.cpu().numpy()
+            img = Image.fromarray(np.clip(data, 0, 255).astype(np.uint8))
+            img_byte_arr = io.BytesIO()
+            img.save(img_byte_arr, format="PNG", pnginfo=metadata)
+            img_byte_arr = img_byte_arr.getvalue()
+            now = datetime.now()
+            date_string = now.strftime("%Y-%m-%d-%H-%M-%S")
+            image_name = f"{filename_prefix}_{i}_{date_string}.png"
+            api = HfApi(token=hf_auth_token)
+            api.upload_file(
+                path_or_fileobj=img_byte_arr,
+                path_in_repo=image_name,
+                repo_id=repository_id,
+                repo_type="dataset",
+            )
+            results.append(image_name)
+
+        return {"ui": {"string_field": results}}
+
 
 # Mapping class names to objects for potential export
 NODE_CLASS_MAPPINGS = {
@@ -246,6 +310,7 @@ NODE_CLASS_MAPPINGS = {
     "Nilor Int From List Of Ints": NilorIntFromListOfInts,
     "Nilor List of Ints": NilorListOfInts,
     "Nilor Count Images In Directory": NilorCountImagesInDirectory,
+    "Nilor Save Image To HF Dataset": NilorSaveImageToHFDataset,
 }
 # Mapping nodes to human-readable names
 NODE_DISPLAY_NAME_MAPPINGS = {
