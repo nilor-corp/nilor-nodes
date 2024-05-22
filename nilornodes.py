@@ -275,7 +275,7 @@ class NilorSaveImageToHFDataset:
     ):
         # Save the image to the dataset
         for imageData in image:
-            i = 255.0 * image.cpu().numpy()
+            i = 255.0 * imageData.cpu().numpy()
             img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
             now = datetime.now()
             date_string = now.strftime("%Y-%m-%d-%H-%M-%S")
