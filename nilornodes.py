@@ -261,7 +261,7 @@ class NilorSaveImageToHFDataset:
 
     RETURN_TYPES = ()
     FUNCTION = "save_image_to_hf_dataset"
-    OUTPUT_Node = True
+    # OUTPUT_Node = True
     CATEGORY = "nilor-nodes"
 
     def save_image_to_hf_dataset(
