@@ -257,6 +257,7 @@ class NilorSaveImageToHFDataset:
             "required": {
                 "image": ("IMAGE",),
                 "repository_id": ("STRING", {"default": "nilor_dataset"}),
+                "hf_auth_token": ("STRING", {"default": "auth_token"}),
                 "filename_prefix": ("STRING", {"default": "nilor_image"}),
             },
             "hidden": {"prompt": "PROMPT", "extra_pnginfo": "EXTRA_PNGINFO"},
@@ -271,6 +272,7 @@ class NilorSaveImageToHFDataset:
         self,
         image,
         repository_id,
+        hf_auth_token,
         filename_prefix="nilor_image",
         prompt=None,
         extra_pnginfo=None,
@@ -287,7 +289,7 @@ class NilorSaveImageToHFDataset:
             now = datetime.now()
             date_string = now.strftime("%Y-%m-%d-%H-%M-%S")
             image_name = f"{filename_prefix}_{i}_{date_string}.png"
-            api = HfApi()
+            api = HfApi(token=hf_auth_token)
             api.upload_file(
                 path_or_fileobj=img_byte_arr,
                 path_in_repo=image_name,
