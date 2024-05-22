@@ -299,7 +299,7 @@ class NilorSaveImageToHFDataset:
             )
             results.append(image_name)
 
-        return {"ui": {"images": results}}
+        return {"ui": {"string_field": results}}
 
 
 # Mapping class names to objects for potential export
