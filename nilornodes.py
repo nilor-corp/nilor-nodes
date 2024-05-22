@@ -297,8 +297,6 @@ class NilorSaveImageToHFDataset:
                 repo_type="dataset",
             )
 
-        return None
-
 
 # Mapping class names to objects for potential export
 NODE_CLASS_MAPPINGS = {
