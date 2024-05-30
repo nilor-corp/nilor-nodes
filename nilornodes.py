@@ -246,6 +246,38 @@ class NilorCountImagesInDirectory:
 
         return [count]
 
+class NilorSaveVideoToHFDataset:
+    def __init__(self) -> None:
+        pass
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": {
+            "filename_prefix": ("STRING", {"default": "nilor_save"}),
+            "filenames": ("VHS_FILENAMES", ),
+            "hf_auth_token": ("STRING", {"default": "auth_token"}),
+            "repository_id": ("STRING", {"default": "nilor_dataset"}),
+            }}
+    RETURN_TYPES = ()
+    FUNCTION = "save_video_to_hf_dataset" 
+    OUTPUT_NODE = True
+    CATEGORY = "nilor-nodes"
+
+    def save_video_to_hf_dataset(self,filenames, hf_auth_token, repository_id, filename_prefix="nilor_save"):
+        files = filenames[1]
+        results = list()
+        for path in files:
+            ext = path.split(".")[-1]
+            name = f"{filename_prefix}.{ext}"
+            api = HfApi(token=hf_auth_token)
+            api.upload_file(
+                path_or_fileobj=path,
+                path_in_repo=name,
+                repo_id=repository_id,
+                repo_type="dataset",
+            )
+            results.append(name)
+        return {"ui": {"string_field": results}}
+            
 
 class NilorSaveImageToHFDataset:
     def __init__(self) -> None:
