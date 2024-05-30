@@ -343,6 +343,7 @@ NODE_CLASS_MAPPINGS = {
     "Nilor List of Ints": NilorListOfInts,
     "Nilor Count Images In Directory": NilorCountImagesInDirectory,
     "Nilor Save Image To HF Dataset": NilorSaveImageToHFDataset,
+    "Nilor Save Video To HF Dataset": NilorSaveVideoToHFDataset,
 }
 # Mapping nodes to human-readable names
 NODE_DISPLAY_NAME_MAPPINGS = {
