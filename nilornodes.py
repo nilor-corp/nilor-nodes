@@ -292,7 +292,9 @@ class NilorAnyFromListOfAny:
         actual_index = index[0] if isinstance(index, list) else index
 
         if actual_index < 0 or actual_index >= len(actual_list):
-            raise ValueError("Index is outside the bounds of the array.")
+            # raise ValueError("Index is outside the bounds of the array.")
+            print("Index is outside the bounds of the array.")
+            return(None,)
 
         # Returns the any value at the given index
         desired_any = actual_list[actual_index]
