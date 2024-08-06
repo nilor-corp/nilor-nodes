@@ -247,6 +247,40 @@ class NilorCountImagesInDirectory:
         return [count]
 
 
+class NilorAnyFromListOfAny:
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(s):
+        # Dictionary that defines input types for each field
+        return {
+            "required": {
+                "list_of_any": (any, {}),
+                "index": ("INT", {"forceInput": False}),
+            },
+        }
+
+    # Define return types and names for outputs of the node
+    RETURN_TYPES = (any,)
+    RETURN_NAMES = ("any",)
+
+    FUNCTION = "any_by_index"
+    CATEGORY = "nilor-nodes"
+
+    INPUT_IS_LIST = True
+
+    def any_by_index(self, list_of_any, index=0):
+        actual_index = index[0] if isinstance(index, list) else index
+
+        if actual_index < 0 or actual_index >= len(list_of_any):
+            raise ValueError("Index is outside the bounds of the array.")
+
+        # Returns the any value at the given index
+        desired_any = list_of_any[actual_index]
+        return [desired_any]
+
+
 class NilorSaveVideoToHFDataset:
     def __init__(self) -> None:
         pass
@@ -351,7 +385,9 @@ NODE_CLASS_MAPPINGS = {
     "Nilor Count Images In Directory": NilorCountImagesInDirectory,
     "Nilor Save Image To HF Dataset": NilorSaveImageToHFDataset,
     "Nilor Save Video To HF Dataset": NilorSaveVideoToHFDataset,
+    "Nilor Any From List Of Any": NilorAnyFromListOfAny,
 }
+
 # Mapping nodes to human-readable names
 NODE_DISPLAY_NAME_MAPPINGS = {
     "FirstNode": "My First Node",
