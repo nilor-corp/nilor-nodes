@@ -11,6 +11,22 @@ from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
 
+
+class AnyType(str):
+    """A special class that is always equal in not equal comparisons. Credit to pythongosssss"""
+
+    def __eq__(self, _) -> bool:
+        return True
+
+    def __ne__(self, __value: object) -> bool:
+        return False
+
+
+any = AnyType("*")
+
+
+
+
 class NilorFloats:
     def __init__(self):
         pass
@@ -271,14 +287,16 @@ class NilorAnyFromListOfAny:
     INPUT_IS_LIST = True
 
     def any_by_index(self, list_of_any, index=0):
+        actual_list = list_of_any[0] # The input is a tensor so we need to unpack one level
+        # print(f"len(list_of_any): {len(list_of_any[0])}") 
         actual_index = index[0] if isinstance(index, list) else index
 
-        if actual_index < 0 or actual_index >= len(list_of_any):
+        if actual_index < 0 or actual_index >= len(actual_list):
             raise ValueError("Index is outside the bounds of the array.")
 
         # Returns the any value at the given index
-        desired_any = list_of_any[actual_index]
-        return [desired_any]
+        desired_any = actual_list[actual_index]
+        return (desired_any,)
 
 
 class NilorSaveVideoToHFDataset:
