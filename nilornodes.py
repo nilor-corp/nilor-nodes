@@ -10,6 +10,12 @@ from datetime import datetime
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
+# Save EXR reqs
+import trange
+import folder_paths
+import OpenEXR
+import Imath
+
 
 
 class AnyType(str):
@@ -24,6 +30,81 @@ class AnyType(str):
 
 any = AnyType("*")
 
+
+class SaveEXR:
+    def __init__(self):
+        self.output_dir = folder_paths.get_output_directory()
+        self.type = "output"
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "list_of_channels": (any,{}),
+                "filename_prefix": ("STRING", {"default": "ComfyUI"}),
+                "version": ("INT", {"default": 1, "min": -1, "max": 999}),
+                "start_frame": ("INT", {"default": 1001, "min": 0, "max": 99999999}),
+                "frame_pad": ("INT", {"default": 4, "min": 1, "max": 8}),
+            },
+
+        }
+
+    RETURN_TYPES = ()
+    FUNCTION = "save_images"
+
+    OUTPUT_NODE = True
+
+    CATEGORY = "image"
+
+    def save_images(self, list_of_channels, filename_prefix, version, start_frame, frame_pad):
+        useabs = os.path.isabs(filename_prefix)
+        if not useabs:
+            full_output_folder, filename, counter, subfolder, filename_prefix = folder_paths.get_save_image_path(filename_prefix, self.output_dir, images[0].shape[1], images[0].shape[0])
+        results = list()
+        
+        linear = list_of_channels.cpu().numpy().astype(np.float32)
+
+        if version < 0:
+            ver = ""
+        else:
+            ver = f"_v{version:03}"
+        
+        if useabs:
+            basepath = filename_prefix
+            if os.path.basename(filename_prefix) == "":
+                basename = os.path.basename(os.path.normpath(filename_prefix))
+                basepath = os.path.join(os.path.normpath(filename_prefix) + ver, basename)
+            if not os.path.exists(os.path.dirname(basepath)):
+                os.mkdir(os.path.dirname(basepath))
+        
+        batch_size = linear.shape[0]
+
+        for i in trange(batch_size, desc="saving images"):
+            if useabs:
+                writepath = basepath + ver + f".{str(start_frame + i).zfill(frame_pad)}.exr"
+            else:
+                file = f"{filename}_{counter:05}_.exr"
+                writepath = os.path.join(full_output_folder, file)
+                counter += 1
+            
+            if os.path.exists(writepath):
+                raise Exception("File exists already, stopping to avoid overwriting")
+            
+            # Prepare the data for writing to EXR
+            channels = {}
+            for c in range(linear.shape[-1]):
+                channel_name = f"channel{c}"
+                channels[channel_name] = linear[i, :, :, c].tobytes()
+            
+            header = OpenEXR.Header(linear.shape[1], linear.shape[2])
+            half_chan = Imath.Channel(Imath.PixelType(Imath.PixelType.FLOAT))
+            header['channels'] = {name: half_chan for name in channels.keys()}
+            
+            exr_file = OpenEXR.OutputFile(writepath, header)
+            exr_file.writePixels(channels)
+            exr_file.close()
+            
+        return { "ui": { "images": results } }
 
 
 
