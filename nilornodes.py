@@ -332,12 +332,11 @@ class NilorSaveEXRArbitrary:
     def save_exr_arbitrary(self, channels=None, filename_prefix="output", prompt=None, extra_pnginfo=None):
 
         print("Running save_exr_arbitrary")
-        print(f"channels: {channels}")
-        print(f"filename_prefix: {filename_prefix}")
+        # print(f"channels: {channels}")
+        # print(f"filename_prefix: {filename_prefix}")
 
         actual_channels = channels
         # actual_channels = channels[0]  # Unpack the channels list
-
         # filename_prefix = filename_prefix[0]  # Unpack the filename_prefix list
 
         # check if actual_channels is subscriptable
