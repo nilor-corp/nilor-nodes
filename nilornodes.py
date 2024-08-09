@@ -9,14 +9,11 @@ from huggingface_hub import HfApi
 from datetime import datetime
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
-
-# Save EXR reqs
-import trange
-import folder_paths
 import OpenEXR
 import Imath
-
-
+import folder_paths
+import torch
+from comfy.graph import ExecutionBlocker
 
 class AnyType(str):
     """A special class that is always equal in not equal comparisons. Credit to pythongosssss"""
@@ -30,81 +27,6 @@ class AnyType(str):
 
 any = AnyType("*")
 
-
-class SaveEXR:
-    def __init__(self):
-        self.output_dir = folder_paths.get_output_directory()
-        self.type = "output"
-
-    @classmethod
-    def INPUT_TYPES(s):
-        return {
-            "required": {
-                "list_of_channels": (any,{}),
-                "filename_prefix": ("STRING", {"default": "ComfyUI"}),
-                "version": ("INT", {"default": 1, "min": -1, "max": 999}),
-                "start_frame": ("INT", {"default": 1001, "min": 0, "max": 99999999}),
-                "frame_pad": ("INT", {"default": 4, "min": 1, "max": 8}),
-            },
-
-        }
-
-    RETURN_TYPES = ()
-    FUNCTION = "save_images"
-
-    OUTPUT_NODE = True
-
-    CATEGORY = "image"
-
-    def save_images(self, list_of_channels, filename_prefix, version, start_frame, frame_pad):
-        useabs = os.path.isabs(filename_prefix)
-        if not useabs:
-            full_output_folder, filename, counter, subfolder, filename_prefix = folder_paths.get_save_image_path(filename_prefix, self.output_dir, images[0].shape[1], images[0].shape[0])
-        results = list()
-        
-        linear = list_of_channels.cpu().numpy().astype(np.float32)
-
-        if version < 0:
-            ver = ""
-        else:
-            ver = f"_v{version:03}"
-        
-        if useabs:
-            basepath = filename_prefix
-            if os.path.basename(filename_prefix) == "":
-                basename = os.path.basename(os.path.normpath(filename_prefix))
-                basepath = os.path.join(os.path.normpath(filename_prefix) + ver, basename)
-            if not os.path.exists(os.path.dirname(basepath)):
-                os.mkdir(os.path.dirname(basepath))
-        
-        batch_size = linear.shape[0]
-
-        for i in trange(batch_size, desc="saving images"):
-            if useabs:
-                writepath = basepath + ver + f".{str(start_frame + i).zfill(frame_pad)}.exr"
-            else:
-                file = f"{filename}_{counter:05}_.exr"
-                writepath = os.path.join(full_output_folder, file)
-                counter += 1
-            
-            if os.path.exists(writepath):
-                raise Exception("File exists already, stopping to avoid overwriting")
-            
-            # Prepare the data for writing to EXR
-            channels = {}
-            for c in range(linear.shape[-1]):
-                channel_name = f"channel{c}"
-                channels[channel_name] = linear[i, :, :, c].tobytes()
-            
-            header = OpenEXR.Header(linear.shape[1], linear.shape[2])
-            half_chan = Imath.Channel(Imath.PixelType(Imath.PixelType.FLOAT))
-            header['channels'] = {name: half_chan for name in channels.keys()}
-            
-            exr_file = OpenEXR.OutputFile(writepath, header)
-            exr_file.writePixels(channels)
-            exr_file.close()
-            
-        return { "ui": { "images": results } }
 
 
 
@@ -381,6 +303,118 @@ class NilorAnyFromListOfAny:
         desired_any = actual_list[actual_index]
         return (desired_any,)
 
+class NilorSaveEXRArbitrary:
+    def __init__(self):
+        self.output_dir = folder_paths.get_output_directory()
+        self.type = "output"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "channels": (any,),  # This should match the 'any' type list from List of Any
+                "filename_prefix": ("STRING", {"default": "output"}),
+            },
+            "hidden": {
+                "prompt": "PROMPT",
+                "extra_pnginfo": "EXTRA_PNGINFO",
+            },
+        }
+
+    RETURN_TYPES = ()
+
+    FUNCTION = "save_exr_arbitrary"  # The execution function
+    CATEGORY = "nilor-nodes"  # UI Category
+    
+    # INPUT_IS_LIST = True 
+    OUTPUT_NODE = True  
+
+    def save_exr_arbitrary(self, channels=None, filename_prefix="output", prompt=None, extra_pnginfo=None):
+
+        print("Running save_exr_arbitrary")
+        print(f"channels: {channels}")
+        print(f"filename_prefix: {filename_prefix}")
+
+        actual_channels = channels
+        # actual_channels = channels[0]  # Unpack the channels list
+
+        # filename_prefix = filename_prefix[0]  # Unpack the filename_prefix list
+
+        # check if actual_channels is subscriptable
+        try:
+            actual_channels[0]
+        except TypeError:
+            print("actual_channels is not subscriptable")
+            return
+
+        # File path handling
+        useabs = os.path.isabs(filename_prefix)
+        if not useabs:
+            full_output_folder, filename, counter, subfolder, filename_prefix = folder_paths.get_save_image_path(filename_prefix, self.output_dir, actual_channels[0].shape[-1], actual_channels[0].shape[-2])
+
+        # Determine if the input contains a batch
+        is_batch = len(actual_channels[0].shape) == 3  # If batch, shape is [batch_size, height, width]
+        if is_batch:
+            batch_size = actual_channels[0].shape[0]
+        else:
+            batch_size = 1
+
+        for i in range(batch_size):
+            # Extract each image's channels
+            if is_batch:
+                image_channels = [tensor[i] for tensor in actual_channels]  # For batch, select i-th image
+            else:
+                image_channels = actual_channels  # For single image, use channels as is
+
+            # Validate each tensor
+            height, width = image_channels[0].shape[-2:]
+            for tensor in image_channels:
+                if tensor.shape[-2:] != (height, width):
+                    raise ValueError("All input tensors must have the same dimensions")
+
+            # Channel naming
+            default_names = ["R", "G", "B", "A"] + [f"Channel{j}" for j in range(4, len(image_channels))]
+            
+            # Prepare data for EXR writing
+            exr_data = {}
+            for j, tensor in enumerate(image_channels):
+                exr_data[default_names[j]] = tensor.cpu().numpy()
+
+            # Handle file naming and saving
+            if useabs:
+                writepath = filename_prefix
+            else:
+                file = f"{filename}_{counter:05}_.exr"
+                writepath = os.path.join(full_output_folder, file)
+                counter += 1
+
+            # Write EXR file
+            self.write_exr(writepath, exr_data)
+
+        return filename_prefix
+
+    def write_exr(self, writepath, exr_data):
+        try:
+            # Determine the height and width from one of the provided channels
+            height, width = list(exr_data.values())[0].shape[:2]
+
+            # Create the EXR file header with dynamic channel names
+            header = OpenEXR.Header(width, height)
+            header['channels'] = {name: Imath.Channel(Imath.PixelType(Imath.PixelType.FLOAT)) for name in exr_data.keys()}
+
+            # Create the EXR file
+            exr_file = OpenEXR.OutputFile(writepath, header)
+
+            # Prepare the data for each channel
+            channel_data = {name: data.astype(np.float32).tobytes() for name, data in exr_data.items()}
+
+            # Write the channel data to the EXR file
+            exr_file.writePixels(channel_data)
+            exr_file.close()
+            
+            print(f"EXR file saved successfully to {writepath}")
+        except Exception as e:
+            print(f"Failed to write EXR file: {e}")
 
 class NilorSaveVideoToHFDataset:
     def __init__(self) -> None:
@@ -487,11 +521,19 @@ NODE_CLASS_MAPPINGS = {
     "Nilor Save Image To HF Dataset": NilorSaveImageToHFDataset,
     "Nilor Save Video To HF Dataset": NilorSaveVideoToHFDataset,
     "Nilor Any From List Of Any": NilorAnyFromListOfAny,
+    "Nilor Save EXR Arbitrary": NilorSaveEXRArbitrary,
 }
 
 # Mapping nodes to human-readable names
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "FirstNode": "My First Node",
-    "SecondNode": "My Second Node",
-    "ThirdNode": "My Third Node",
+    "Nilor Floats": "👺 Floats",
+    "Nilor Int To List Of Bools": "👺 Int To List Of Bools",
+    "Nilor Bool From List Of Bools": "👺 Bool From List Of Bools",
+    "Nilor Int From List Of Ints": "👺 Int From List Of Ints",
+    "Nilor List of Ints": "👺 List of Ints",
+    "Nilor Count Images In Directory": "👺 Count Images In Directory",
+    "Nilor Save Image To HF Dataset": "👺 Save Image To HF Dataset",
+    "Nilor Save Video To HF Dataset": "👺 Save Video To HF Dataset",
+    "Nilor Any From List Of Any": "👺 Any From List Of Any",
+    "Nilor Save EXR Arbitrary": "👺 Save EXR Arbitrary",
 }
