@@ -13,8 +13,13 @@ import OpenEXR
 import Imath
 import folder_paths
 import torch
-from comfy.graph import ExecutionBlocker
 
+category = "Nilor Nodes 👺"
+subcategories = {
+    "generators": "/Generators",
+    "utilities": "/Utilities",
+    "io": "/IO",
+}
 class AnyType(str):
     """A special class that is always equal in not equal comparisons. Credit to pythongosssss"""
 
@@ -30,7 +35,7 @@ any = AnyType("*")
 
 
 
-class NilorFloats:
+class NilorInterpolatedFloatList: # Generate interpolated float values based on a number of sections
     def __init__(self):
         pass
 
@@ -39,9 +44,10 @@ class NilorFloats:
         # Dictionary that defines input types for each field
         return {
             "required": {
-                "number_of_frames": ("INT", {"forceInput": False}),
-                "number_of_images": ("INT", {"forceInput": False}),
-                "image_number": ("INT", {"forceInput": False}),
+                "number_of_floats": ("INT", {"forceInput": False}),
+                "number_of_sections": ("INT", {"forceInput": False}),
+                "section_number": ("INT", {"forceInput": False}),
+                "interpolation_type": (["slinear","quadratic", "cubic"], {}),  # Type of interpolation to use
             },
         }
 
@@ -49,46 +55,46 @@ class NilorFloats:
     RETURN_TYPES = ("FLOAT",)
     RETURN_NAMES = ("floats",)
 
-    FUNCTION = "test"
-    CATEGORY = "nilor-nodes"
+    FUNCTION = "generate_float_list"
+    CATEGORY = category + subcategories["generators"]
 
     @staticmethod
-    def interpolate_values(start, end, num_points):
+    def interpolate_values(start, end, num_points, interp_type):
         # Linear interpolation between start and end over num_points
         x = linspace(0, num_points - 1, num_points)
         y = linspace(start, end, num_points)
-        f = interp1d(x, y, kind="cubic")
+
+        f = interp1d(x, y, kind=interp_type)
         return f(x)
 
-    def test(self, number_of_frames, number_of_images, image_number):
+    def generate_float_list(self, number_of_floats, number_of_sections, section_number, interpolation_type):
         # Initializes the array with zeros
-        my_floats = [0.0] * number_of_frames
+        my_floats = [0.0] * number_of_floats
         # Calculate the length of each portion based on total frames and number of images
-        portion_length = int((number_of_frames - 1) / (number_of_images - 1))
+        portion_length = int((number_of_floats - 1) / (number_of_sections - 1))
 
         # Handling the first image (special case for the first segment)
-        if image_number == 1:
-            portion_values = NilorFloats.interpolate_values(1, 0, portion_length)
+        if section_number == 1:
+            portion_values = self.interpolate_values(1, 0, portion_length, interpolation_type)
             my_floats[0:portion_length] = portion_values
         # Handling the last image (special case for the last segment)
-        elif image_number == number_of_images:
-            portion_values = NilorFloats.interpolate_values(0, 1, portion_length)
-            start_index = int((number_of_images - 2) * portion_length)
+        elif section_number == number_of_sections:
+            portion_values = self.interpolate_values(0, 1, portion_length, interpolation_type)
+            start_index = int((number_of_sections - 2) * portion_length)
             my_floats[start_index:] = portion_values
         # Handling middle images (general case for dual segments)
         else:
             portion_values = np.concatenate(
                 [
-                    NilorFloats.interpolate_values(0, 1, portion_length),
-                    NilorFloats.interpolate_values(1, 0, portion_length),
+                    self.interpolate_values(0, 1, portion_length, interpolation_type),
+                    self.interpolate_values(1, 0, portion_length, interpolation_type),
                 ]
             )
-            start_index = int((image_number - 2) * portion_length)
+            start_index = int((section_number - 2) * portion_length)
             end_index = start_index + (2 * portion_length)
             my_floats[start_index:end_index] = portion_values
         # Returns the modified list of float values
         return (my_floats,)
-
 
 class NilorIntToListOfBools:
     def __init__(self):
@@ -108,7 +114,7 @@ class NilorIntToListOfBools:
     RETURN_NAMES = ("booleans",)
 
     FUNCTION = "boolify"
-    CATEGORY = "nilor-nodes"
+    CATEGORY = category + subcategories["generators"]
 
     OUTPUT_IS_LIST = (True,)
 
@@ -122,113 +128,33 @@ class NilorIntToListOfBools:
 
         return (my_bools,)
 
-
-class NilorBoolFromListOfBools:
-    def __init__(self):
-        pass
-
-    @classmethod
-    def INPUT_TYPES(s):
-        # Dictionary that defines input types for each field
-        return {
-            "required": {
-                "booleans": ("BOOLEAN", {"forceInput": False}),
-                "index": ("INT", {"forceInput": False}),
-            },
-        }
-
-    # Define return types and names for outputs of the node
-    RETURN_TYPES = ("BOOLEAN",)
-    RETURN_NAMES = ("boolean",)
-
-    FUNCTION = "bool_by_index"
-    CATEGORY = "nilor-nodes"
-
-    INPUT_IS_LIST = True
-
-    def bool_by_index(self, booleans, index):
-        actual_index = index[0] if isinstance(index, list) else index
-
-        if actual_index < 0 or actual_index >= len(booleans):
-            raise ValueError("Index is outside the bounds of the array.")
-
-        # Returns the boolean value at the given index
-        desired_bool = booleans[actual_index]
-        return [desired_bool]
-
-
-class NilorIntFromListOfInts:
-    def __init__(self):
-        pass
-
-    @classmethod
-    def INPUT_TYPES(s):
-        # Dictionary that defines input types for each field
-        return {
-            "required": {
-                "ints": ("INT", {"forceInput": False}),
-                "index": ("INT", {"forceInput": False}),
-            },
-        }
-
-    # Define return types and names for outputs of the node
-    RETURN_TYPES = ("INT",)
-    RETURN_NAMES = ("int",)
-
-    FUNCTION = "int_by_index"
-    CATEGORY = "nilor-nodes"
-
-    INPUT_IS_LIST = True
-
-    def int_by_index(self, ints, index=0):
-        actual_index = index[0] if isinstance(index, list) else index
-
-        if actual_index < 0 or actual_index >= len(ints):
-            raise ValueError("Index is outside the bounds of the array.")
-
-        # Returns the int value at the given index
-        desired_int = ints[actual_index]
-        return [desired_int]
-
-
 class NilorListOfInts:
     def __init__(self):
         pass
 
     @classmethod
-    def INPUT_TYPES(s):
-        # Dictionary that defines input types for each field
+    def INPUT_TYPES(cls):
         return {
             "required": {
-                "min": ("INT", {"forceInput": False}, {"default": 0}),
-                "max": ("INT", {"forceInput": False}, {"default": 9}),
+                "min": ("INT", {"forceInput": False, "default": 0}),
+                "max": ("INT", {"forceInput": False, "default": 9}),
                 "shuffle": ("BOOLEAN", {"default": False}),  # Toggle to randomize order
-                "run_trigger": ("INT", {"default": 0}),  # Dummy input for caching issue
             },
         }
 
-    # Define return types and names for outputs of the node
     RETURN_TYPES = ("INT",)
     RETURN_NAMES = ("ints",)
-
     FUNCTION = "int_list"
-    CATEGORY = "nilor-nodes"
+    CATEGORY = category + subcategories["generators"]
+    OUTPUT_IS_LIST = (True,)  # Indicates that the output should be processed as a list of individual elements
 
-    OUTPUT_IS_LIST = (True,)
-
-    def int_list(self, run_trigger, min=1, max=10, shuffle=False):
-        if max < min:
-            raise ValueError("Input maximum is less than input minimum.")
-
-        # Create a list of sequential integers from min_value to max_value
+    def int_list(self, min=1, max=10, shuffle=False):
+        # Generate the list
         ints_list = list(range(min, max + 1))
-
-        # Shuffle the list
         if shuffle:
             random.shuffle(ints_list)
 
         return (ints_list,)
-
 
 class NilorCountImagesInDirectory:
     def __init__(self):
@@ -248,7 +174,7 @@ class NilorCountImagesInDirectory:
     RETURN_NAMES = ("int",)
 
     FUNCTION = "count_images_in_directory"
-    CATEGORY = "nilor-nodes"
+    CATEGORY = category + subcategories["utilities"]
 
     INPUT_IS_LIST = False
 
@@ -265,43 +191,43 @@ class NilorCountImagesInDirectory:
 
         return [count]
 
-
-class NilorAnyFromListOfAny:
+class NilorSelectIndexFromList:
     def __init__(self):
         pass
 
     @classmethod
-    def INPUT_TYPES(s):
-        # Dictionary that defines input types for each field
+    def INPUT_TYPES(cls):
         return {
             "required": {
-                "list_of_any": (any, {}),
-                "index": ("INT", {"forceInput": False}),
+                "list_of_any": (any, {"forceInput": False}),  # Marking as lazy if processing could be deferred
+                "index": ("INT", {"default": 0}),
             },
         }
 
-    # Define return types and names for outputs of the node
     RETURN_TYPES = (any,)
     RETURN_NAMES = ("any",)
-
     FUNCTION = "any_by_index"
-    CATEGORY = "nilor-nodes"
-
-    INPUT_IS_LIST = True
+    CATEGORY = category + subcategories["utilities"]
+    INPUT_IS_LIST = True  # Treats input list as a whole, rather than processing each item separately
+    OUTPUT_IS_LIST = (False,)  # Output is a single element, not a list
 
     def any_by_index(self, list_of_any, index=0):
-        actual_list = list_of_any[0] # The input is a tensor so we need to unpack one level
-        # print(f"len(list_of_any): {len(list_of_any[0])}") 
-        actual_index = index[0] if isinstance(index, list) else index
+        # The input is a tensor so we need to unpack one level
+        if isinstance(list_of_any, list) and len(list_of_any) == 1:
+            actual_list = list_of_any[0]
+        else:
+            actual_list = list_of_any
 
-        if actual_index < 0 or actual_index >= len(actual_list):
-            # raise ValueError("Index is outside the bounds of the array.")
-            print("Index is outside the bounds of the array.")
-            return(None,)
+        # Handle index access safely
+        if isinstance(index, list):
+            index = index[0]
+        
+        # Ensure the index is within bounds
+        if index < 0 or index >= len(actual_list):
+            raise ValueError("Index is outside the bounds of the array.")
 
-        # Returns the any value at the given index
-        desired_any = actual_list[actual_index]
-        return (desired_any,)
+        # Returns the value at the given index
+        return (actual_list[index],)
 
 class NilorSaveEXRArbitrary:
     def __init__(self):
@@ -324,7 +250,7 @@ class NilorSaveEXRArbitrary:
     RETURN_TYPES = ()
 
     FUNCTION = "save_exr_arbitrary"  # The execution function
-    CATEGORY = "nilor-nodes"  # UI Category
+    CATEGORY = category + subcategories["io"] 
     
     # INPUT_IS_LIST = True 
     OUTPUT_NODE = True  
@@ -433,7 +359,7 @@ class NilorSaveVideoToHFDataset:
     RETURN_TYPES = ()
     FUNCTION = "save_video_to_hf_dataset"
     OUTPUT_NODE = True
-    CATEGORY = "nilor-nodes"
+    CATEGORY = category + subcategories["io"]
 
     def save_video_to_hf_dataset(
         self, filenames, hf_auth_token, repository_id, filename_prefix="nilor_save"
@@ -452,7 +378,6 @@ class NilorSaveVideoToHFDataset:
             )
             results.append(name)
         return {"ui": {"string_field": results}}
-
 
 class NilorSaveImageToHFDataset:
     def __init__(self) -> None:
@@ -473,7 +398,7 @@ class NilorSaveImageToHFDataset:
     RETURN_TYPES = ()
     FUNCTION = "save_image_to_hf_dataset"
     OUTPUT_NODE = True
-    CATEGORY = "nilor-nodes"
+    CATEGORY = category + subcategories["io"]
 
     def save_image_to_hf_dataset(
         self,
@@ -511,28 +436,24 @@ class NilorSaveImageToHFDataset:
 
 # Mapping class names to objects for potential export
 NODE_CLASS_MAPPINGS = {
-    "Nilor Floats": NilorFloats,
+    "Nilor Interpolated Float List": NilorInterpolatedFloatList,
     "Nilor Int To List Of Bools": NilorIntToListOfBools,
-    "Nilor Bool From List Of Bools": NilorBoolFromListOfBools,
-    "Nilor Int From List Of Ints": NilorIntFromListOfInts,
     "Nilor List of Ints": NilorListOfInts,
     "Nilor Count Images In Directory": NilorCountImagesInDirectory,
     "Nilor Save Image To HF Dataset": NilorSaveImageToHFDataset,
     "Nilor Save Video To HF Dataset": NilorSaveVideoToHFDataset,
-    "Nilor Any From List Of Any": NilorAnyFromListOfAny,
+    "Nilor Select Index From List": NilorSelectIndexFromList,
     "Nilor Save EXR Arbitrary": NilorSaveEXRArbitrary,
 }
 
 # Mapping nodes to human-readable names
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "Nilor Floats": "👺 Floats",
+    "Nilor Interpolated Float List": "👺 Interpolated Float List",
     "Nilor Int To List Of Bools": "👺 Int To List Of Bools",
-    "Nilor Bool From List Of Bools": "👺 Bool From List Of Bools",
-    "Nilor Int From List Of Ints": "👺 Int From List Of Ints",
     "Nilor List of Ints": "👺 List of Ints",
     "Nilor Count Images In Directory": "👺 Count Images In Directory",
     "Nilor Save Image To HF Dataset": "👺 Save Image To HF Dataset",
     "Nilor Save Video To HF Dataset": "👺 Save Video To HF Dataset",
-    "Nilor Any From List Of Any": "👺 Any From List Of Any",
+    "Nilor Select Index From List": "👺 Select Index From List",
     "Nilor Save EXR Arbitrary": "👺 Save EXR Arbitrary",
 }
