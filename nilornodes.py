@@ -13,7 +13,6 @@ import OpenEXR
 import Imath
 import folder_paths
 import torch
-from comfy.graph import ExecutionBlocker
 
 class AnyType(str):
     """A special class that is always equal in not equal comparisons. Credit to pythongosssss"""
