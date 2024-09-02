@@ -513,60 +513,41 @@ class NilorShuffleImageBatch:
 
     @classmethod
     def INPUT_TYPES(s):
-        # Dictionary that defines input types for each field
         return {
             "required": {
-                "images": ("IMAGE",)
+                "images": ("IMAGE",),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff})
             },
         }
 
-    # Define return types and names for outputs of the node
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("images",)
 
     FUNCTION = "shuffle_image_batch"
     CATEGORY = "nilor-nodes"
 
-    def _check_image_dimensions(self, tensors, names):
-        reference_dimensions = tensors[0].shape[1:]  # Ignore batch dimension
-        mismatched_images = [names[i] for i, tensor in enumerate(tensors) if tensor.shape[1:] != reference_dimensions]
+    def _check_image_dimensions(self, images):
+        if images.shape[0] == 0:
+            raise ValueError("Input images tensor is empty.")
+        
+        # All images in the batch should have the same dimensions
+        if len(images.shape) != 4:
+            raise ValueError(f"Expected 4D tensor (batch, channels, height, width), got shape {images.shape}")
 
-        if mismatched_images:
-            raise ValueError(f"WAS Image Batch Warning: Input image dimensions do not match for images: {mismatched_images}")
-
-    def get_tensors_by_indices(self, tensors, indices):
-        selected_tensors = []
-        for index in indices:
-            if 0 <= index < len(tensors):  # Check if index is valid
-                selected_tensors.append(tensors[index])
-            else:
-                print(f"Index {index} is out of range.")
-        return selected_tensors
-
-    def shuffle_image_batch(self, **kwargs):
-        batched_tensors = [kwargs[key] for key in kwargs if kwargs[key] is not None]
-
-        if not batched_tensors:
-            raise ValueError("At least one input image must be provided.")
-
-        self._check_image_dimensions(batched_tensors, [key for key in kwargs if kwargs[key] is not None])
-
-        # Concatenate all tensors along the batch dimension
-        batched_tensors = torch.cat(batched_tensors, dim=0)
+    def shuffle_image_batch(self, images, seed):
+        self._check_image_dimensions(images)
 
         # Get the number of images in the batch
-        num_images = batched_tensors.shape[0]
+        num_images = images.shape[0]
 
         # Generate indices and shuffle them
-        indices = torch.randperm(num_images).tolist()
+        torch.manual_seed(seed)
+        indices = torch.randperm(num_images)
 
         # Shuffle the images using the indices
-        shuffled_tensors = batched_tensors[indices]
+        shuffled_images = images[indices]
 
-        #print(f"NILOR num_images: {num_images}")
-        #print(f"NILOR shuffled_tensors shape: {shuffled_tensors.shape}")
-
-        return (shuffled_tensors,)
+        return (shuffled_images,)
 
 
 # Mapping class names to objects for potential export
@@ -581,7 +562,7 @@ NODE_CLASS_MAPPINGS = {
     "Nilor Save Video To HF Dataset": NilorSaveVideoToHFDataset,
     "Nilor Any From List Of Any": NilorAnyFromListOfAny,
     "Nilor Save EXR Arbitrary": NilorSaveEXRArbitrary,
-    "Nilor Shuffle Image Batch": NilorShuffleImageBatch,
+    "Nilor Shuffle Image Batch": NilorShuffleImageBatch
 }
 
 # Mapping nodes to human-readable names
@@ -596,5 +577,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "Nilor Save Video To HF Dataset": "👺 Save Video To HF Dataset",
     "Nilor Any From List Of Any": "👺 Any From List Of Any",
     "Nilor Save EXR Arbitrary": "👺 Save EXR Arbitrary",
-    "Nilor Shuffle Image Batch": "👺 Nilor Shuffle Image Batch",
+    "Nilor Shuffle Image Batch": "👺 Nilor Shuffle Image Batch"
 }
