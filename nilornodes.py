@@ -563,8 +563,8 @@ class NilorShuffleImageBatch:
         # Shuffle the images using the indices
         shuffled_tensors = batched_tensors[indices]
 
-        print(f"NILOR num_images: {num_images}")
-        print(f"NILOR shuffled_tensors shape: {shuffled_tensors.shape}")
+        #print(f"NILOR num_images: {num_images}")
+        #print(f"NILOR shuffled_tensors shape: {shuffled_tensors.shape}")
 
         return (shuffled_tensors,)
 
