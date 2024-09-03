@@ -587,7 +587,7 @@ class NilorOutputFilenameString:
         section = section or "test-1"
         name = name or "out-1"
 
-        text = f"{client}_{project}/{section}/{time}_{section}/{time}_{client}_{project}_{section}-{name}"
+        text = f"{client}_{project}/{section}/{time}_{section}/{time}_{client}_{project}_{section}_{name}"
         
         if unique_id is not None and extra_pnginfo is not None:
             if not isinstance(extra_pnginfo, list):
