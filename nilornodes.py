@@ -14,6 +14,9 @@ import Imath
 import folder_paths
 import torch
 
+BIGMIN = -(2**53-1)
+BIGMAX = (2**53-1)
+
 category = "Nilor Nodes 👺"
 subcategories = {
     "generators": "/Generators",
@@ -475,6 +478,47 @@ class NilorShuffleImageBatch:
 
         return (shuffled_images,)
 
+class NilorRepeatTrimImageBatch:
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "images": ("IMAGE",),
+                "count": ("INT", {"default": 1, "min": 1, "max": BIGMAX, "step": 1})
+            },
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("images",)
+
+    FUNCTION = "repeat_trim_image_batch"
+    CATEGORY = "nilor-nodes"
+    
+    def _check_image_dimensions(self, images):
+        if images.shape[0] == 0:
+            raise ValueError("Input images tensor is empty.")
+        
+        # All images in the batch should have the same dimensions
+        if len(images.shape) != 4:
+            raise ValueError(f"Expected 4D tensor (batch, channels, height, width), got shape {images.shape}")
+
+    def repeat_trim_image_batch(self, images, count):
+        self._check_image_dimensions(images)
+
+        images_count = images.size(0)
+        amount = math.ceil(count / images_count)
+        
+        appended_tensors = images.repeat(amount, 1, 1, 1),
+
+        batched_tensors = torch.cat(appended_tensors, dim=0)
+
+        trimmed_tensors = batched_tensors[:count]
+
+        return (trimmed_tensors,)
+
 class NilorOutputFilenameString:
     def __init__(self):
         pass
@@ -547,6 +591,7 @@ NODE_CLASS_MAPPINGS = {
     "Nilor Select Index From List": NilorSelectIndexFromList,
     "Nilor Save EXR Arbitrary": NilorSaveEXRArbitrary,
     "Nilor Shuffle Image Batch": NilorShuffleImageBatch,
+    "Nilor Repeat & Trim Image Batch": NilorRepeatTrimImageBatch,
     "Nilor Output Filename String": NilorOutputFilenameString
 
 }
@@ -562,5 +607,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "Nilor Select Index From List": "👺 Select Index From List",
     "Nilor Save EXR Arbitrary": "👺 Save EXR Arbitrary",
     "Nilor Shuffle Image Batch": "👺 Nilor Shuffle Image Batch",
+    "Nilor Repeat & Trim Image Batch": "👺 Nilor Repeat Trim Image Batch",
     "Nilor Output Filename String": "👺 Nilor Output Filename String"
 }
