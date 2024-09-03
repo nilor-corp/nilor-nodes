@@ -505,16 +505,14 @@ class NilorRepeatTrimImageBatch:
         if len(images.shape) != 4:
             raise ValueError(f"Expected 4D tensor (batch, channels, height, width), got shape {images.shape}")
 
-    def repeat_trim_image_batch(self, images, count):
+    def repeat_trim_image_batch(self, images: torch.Tensor, count):
         self._check_image_dimensions(images)
 
-        images_count = images.size(0)
-        amount = math.ceil(count / images_count)
+        batch_count = images.size(0)
+        amount = math.ceil(count / batch_count)
         
         appended_tensors = images.repeat(amount, 1, 1, 1),
-
         batched_tensors = torch.cat(appended_tensors, dim=0)
-
         trimmed_tensors = batched_tensors[:count]
 
         return (trimmed_tensors,)
@@ -607,6 +605,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "Nilor Select Index From List": "👺 Select Index From List",
     "Nilor Save EXR Arbitrary": "👺 Save EXR Arbitrary",
     "Nilor Shuffle Image Batch": "👺 Nilor Shuffle Image Batch",
-    "Nilor Repeat & Trim Image Batch": "👺 Nilor Repeat Trim Image Batch",
+    "Nilor Repeat & Trim Image Batch": "👺 Nilor Repeat & Trim Image Batch",
     "Nilor Output Filename String": "👺 Nilor Output Filename String"
 }
