@@ -433,6 +433,108 @@ class NilorSaveImageToHFDataset:
 
         return {"ui": {"string_field": results}}
 
+class NilorShuffleImageBatch:
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "images": ("IMAGE",),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff})
+            },
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("images",)
+
+    FUNCTION = "shuffle_image_batch"
+    CATEGORY = "nilor-nodes"
+
+    def _check_image_dimensions(self, images):
+        if images.shape[0] == 0:
+            raise ValueError("Input images tensor is empty.")
+        
+        # All images in the batch should have the same dimensions
+        if len(images.shape) != 4:
+            raise ValueError(f"Expected 4D tensor (batch, channels, height, width), got shape {images.shape}")
+
+    def shuffle_image_batch(self, images, seed):
+        self._check_image_dimensions(images)
+
+        # Get the number of images in the batch
+        num_images = images.shape[0]
+
+        # Generate indices and shuffle them
+        torch.manual_seed(seed)
+        indices = torch.randperm(num_images)
+
+        # Shuffle the images using the indices
+        shuffled_images = images[indices]
+
+        return (shuffled_images,)
+
+class NilorOutputFilenameString:
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "client": ("STRING", {"default": "nilor"}),
+                "project": ("STRING", {"default": "research"}),
+                "section": ("STRING", {"default": "test-1"}),
+                "name": ("STRING", {"default": "out-1"}),
+            },
+            "hidden": {
+                "unique_id": "UNIQUE_ID",
+                "extra_pnginfo": "EXTRA_PNGINFO",
+            },
+        }
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("string",)
+    FUNCTION = "notify"
+    CATEGORY = "nilor-nodes"
+    OUTPUT_NODE = True
+    IS_CHANGED = True
+
+    def get_time(self, format: str):
+        now = datetime.now()
+        return now.strftime(format)
+
+    def notify(self, client, project, section, name, unique_id=None, extra_pnginfo=None):
+        time = self.get_time("%y%m%d-%H%M%S")
+        
+        client = client or "nilor"
+        project = project or "research"
+        section = section or "test-1"
+        name = name or "out-1"
+
+        text = f"{client}_{project}/{section}/{time}_{section}/{time}_{client}_{project}_{section}_{name}"
+        
+        if unique_id is not None and extra_pnginfo is not None:
+            if not isinstance(extra_pnginfo, list):
+                print("Error: extra_pnginfo is not a list")
+            elif (
+                not isinstance(extra_pnginfo[0], dict)
+                or "workflow" not in extra_pnginfo[0]
+            ):
+                print("Error: extra_pnginfo[0] is not a dict or missing 'workflow' key")
+            else:
+                workflow = extra_pnginfo[0]["workflow"]
+                node = next(
+                    (x for x in workflow["nodes"] if str(x["id"]) == str(unique_id[0])),
+                    None,
+                )
+                if node:
+                    node["widgets_values"] = [text]
+
+        #TODO: make this node's text string preview widget work
+        return {"ui": {"text": text}, "result": (text,)}
+
 
 # Mapping class names to objects for potential export
 NODE_CLASS_MAPPINGS = {
@@ -444,6 +546,9 @@ NODE_CLASS_MAPPINGS = {
     "Nilor Save Video To HF Dataset": NilorSaveVideoToHFDataset,
     "Nilor Select Index From List": NilorSelectIndexFromList,
     "Nilor Save EXR Arbitrary": NilorSaveEXRArbitrary,
+    "Nilor Shuffle Image Batch": NilorShuffleImageBatch,
+    "Nilor Output Filename String": NilorOutputFilenameString
+
 }
 
 # Mapping nodes to human-readable names
@@ -456,4 +561,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "Nilor Save Video To HF Dataset": "👺 Save Video To HF Dataset",
     "Nilor Select Index From List": "👺 Select Index From List",
     "Nilor Save EXR Arbitrary": "👺 Save EXR Arbitrary",
+    "Nilor Shuffle Image Batch": "👺 Nilor Shuffle Image Batch",
+    "Nilor Output Filename String": "👺 Nilor Output Filename String"
 }
