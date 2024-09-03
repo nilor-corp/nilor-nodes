@@ -445,7 +445,7 @@ class NilorShuffleImageBatch:
         return {
             "required": {
                 "images": ("IMAGE",),
-                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff})
+                "seed": ("INT", {"default": 0, "min": 0, "max": BIGMAX, "step": 1})
             },
         }
 
@@ -463,7 +463,7 @@ class NilorShuffleImageBatch:
         if len(images.shape) != 4:
             raise ValueError(f"Expected 4D tensor (batch, channels, height, width), got shape {images.shape}")
 
-    def shuffle_image_batch(self, images, seed):
+    def shuffle_image_batch(self, images: torch.Tensor, seed):
         self._check_image_dimensions(images)
 
         # Get the number of images in the batch
@@ -512,6 +512,52 @@ class NilorRepeatTrimImageBatch:
         amount = math.ceil(count / batch_count)
         
         appended_tensors = images.repeat(amount, 1, 1, 1),
+        batched_tensors = torch.cat(appended_tensors, dim=0)
+        trimmed_tensors = batched_tensors[:count]
+
+        return (trimmed_tensors,)
+
+class NilorRepeatShuffleTrimImageBatch:
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "images": ("IMAGE",),
+                "seed": ("INT", {"default": 0, "min": 0, "max": BIGMAX, "step": 1}),
+                "count": ("INT", {"default": 1, "min": 1, "max": BIGMAX, "step": 1})
+            },
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("images",)
+
+    FUNCTION = "repeat_shuffle_trim_image_batch"
+    CATEGORY = "nilor-nodes"
+    
+    def _check_image_dimensions(self, images):
+        if images.shape[0] == 0:
+            raise ValueError("Input images tensor is empty.")
+        
+        # All images in the batch should have the same dimensions
+        if len(images.shape) != 4:
+            raise ValueError(f"Expected 4D tensor (batch, channels, height, width), got shape {images.shape}")
+    
+    def repeat_shuffle_trim_image_batch(self, images: torch.Tensor, seed, count):
+        self._check_image_dimensions(images)
+
+        torch.manual_seed(seed)
+
+        batch_count = images.size(0)
+        amount = math.ceil(count / batch_count)
+
+        appended_tensors = []
+        while len(appended_tensors) < count:
+            indices = torch.randperm(batch_count)
+            appended_tensors.append(images[indices])
+        
         batched_tensors = torch.cat(appended_tensors, dim=0)
         trimmed_tensors = batched_tensors[:count]
 
@@ -590,6 +636,7 @@ NODE_CLASS_MAPPINGS = {
     "Nilor Save EXR Arbitrary": NilorSaveEXRArbitrary,
     "Nilor Shuffle Image Batch": NilorShuffleImageBatch,
     "Nilor Repeat & Trim Image Batch": NilorRepeatTrimImageBatch,
+    "Nilor Repeat, Shuffle, & Trim Image Batch": NilorRepeatShuffleTrimImageBatch,
     "Nilor Output Filename String": NilorOutputFilenameString
 
 }
@@ -606,5 +653,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "Nilor Save EXR Arbitrary": "👺 Save EXR Arbitrary",
     "Nilor Shuffle Image Batch": "👺 Nilor Shuffle Image Batch",
     "Nilor Repeat & Trim Image Batch": "👺 Nilor Repeat & Trim Image Batch",
+    "Nilor Repeat, Shuffle, & Trim Image Batch": "👺 Nilor Repeat, Shuffle, & Trim Image Batch",
     "Nilor Output Filename String": "👺 Nilor Output Filename String"
 }
