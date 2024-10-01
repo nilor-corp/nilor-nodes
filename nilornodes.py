@@ -98,6 +98,119 @@ class NilorInterpolatedFloatList: # Generate interpolated float values based on 
             my_floats[start_index:end_index] = portion_values
         # Returns the modified list of float values
         return (my_floats,)
+    
+
+class NilorOneMinusFloatList:
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(s):
+        # Dictionary that defines input types for each field
+        return {
+            "required": {
+                "list_of_floats": ("FLOAT", {"input_is_list": True}),
+            },
+        }
+
+    # Define return types and names for outputs of the node
+    RETURN_TYPES = ("FLOAT",)
+    RETURN_NAMES = ("floats",)
+    
+    FUNCTION = "one_minus_float_list"
+    CATEGORY = category + subcategories["generators"]
+
+    def one_minus_float_list(self, list_of_floats):
+        return ([1 - x for x in list_of_floats],)
+    
+class NilorRemapFloatList:
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(s):
+        # Dictionary that defines input types for each field
+        return {
+            "required": {
+                "list_of_floats": ("FLOAT", {"input_is_list": True}),
+                "min_input": ("FLOAT", {"default": 0.0}),
+                "max_input": ("FLOAT", {"default": 1.0}),
+                "min_output": ("FLOAT", {"default": 0.0}),
+                "max_output": ("FLOAT", {"default": 1.0}),
+            },
+        }
+
+    # Define return types and names for outputs of the node
+    RETURN_TYPES = ("FLOAT",)
+    RETURN_NAMES = ("remapped_floats",)
+    
+    FUNCTION = "remap_float_list"
+    CATEGORY = category + subcategories["generators"]
+
+    def remap_float_list(self, list_of_floats, min_input, max_input, min_output, max_output):
+        # Avoid division by zero
+        if max_input - min_input == 0:
+            raise ValueError("max_input and min_input cannot be the same value.")
+
+        scale = (max_output - min_output) / (max_input - min_input)
+        return ([min_output + (x - min_input) * scale for x in list_of_floats],)
+
+
+class NilorRemapFloatListAutoInput:
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "list_of_floats": ("FLOAT", {"input_is_list": True}),
+                "min_output": ("FLOAT", {"default": 0.0}),
+                "max_output": ("FLOAT", {"default": 1.0}),
+            },
+        }
+
+    # Define return types and names for outputs of the node
+    RETURN_TYPES = ("FLOAT",)
+    RETURN_NAMES = ("remapped_list",)
+    
+    FUNCTION = "remap_float_list_auto_input"
+    CATEGORY = category + subcategories["generators"]
+
+    def remap_float_list_auto_input(self, list_of_floats, min_output, max_output):
+        min_input = min(list_of_floats)
+        max_input = max(list_of_floats)
+
+        scale = (max_output - min_output) / (max_input - min_input)
+        return ([min_output + (x - min_input) * scale for x in list_of_floats],)
+    
+    
+class NilorInverseMapFloatList:
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "list_of_floats": ("FLOAT", {"input_is_list": True}),
+            },
+        }
+
+    RETURN_TYPES = ("FLOAT",)
+    RETURN_NAMES = ("floats",)
+
+    FUNCTION = "inverse_map_float_list"
+    CATEGORY = category + subcategories["generators"]
+
+    def inverse_map_float_list(self, list_of_floats):
+        if not list_of_floats:
+            raise ValueError("The input list_of_floats cannot be empty.")
+        
+        min_input = min(list_of_floats)
+        max_input = max(list_of_floats)
+
+        return ([min_input + max_input - x for x in list_of_floats],)
 
 class NilorIntToListOfBools:
     def __init__(self):
@@ -627,6 +740,9 @@ class NilorOutputFilenameString:
 # Mapping class names to objects for potential export
 NODE_CLASS_MAPPINGS = {
     "Nilor Interpolated Float List": NilorInterpolatedFloatList,
+    "Nilor One Minus Float List": NilorOneMinusFloatList,
+    "Nilor Remap Float List": NilorRemapFloatList,
+    "Nilor Inverse Map Float List": NilorInverseMapFloatList,
     "Nilor Int To List Of Bools": NilorIntToListOfBools,
     "Nilor List of Ints": NilorListOfInts,
     "Nilor Count Images In Directory": NilorCountImagesInDirectory,
@@ -638,12 +754,14 @@ NODE_CLASS_MAPPINGS = {
     "Nilor Repeat & Trim Image Batch": NilorRepeatTrimImageBatch,
     "Nilor Repeat, Shuffle, & Trim Image Batch": NilorRepeatShuffleTrimImageBatch,
     "Nilor Output Filename String": NilorOutputFilenameString
-
 }
 
 # Mapping nodes to human-readable names
 NODE_DISPLAY_NAME_MAPPINGS = {
     "Nilor Interpolated Float List": "👺 Interpolated Float List",
+    "Nilor One Minus Float List": "👺 One Minus Float List",
+    "Nilor Remap Float List": "👺 Nilor Remap Float List",
+    "Nilor Inverse Map Float List": "👺 Nilor Inverse Map Float List",
     "Nilor Int To List Of Bools": "👺 Int To List Of Bools",
     "Nilor List of Ints": "👺 List of Ints",
     "Nilor Count Images In Directory": "👺 Count Images In Directory",
