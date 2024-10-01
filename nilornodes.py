@@ -453,7 +453,7 @@ class NilorShuffleImageBatch:
     RETURN_NAMES = ("images",)
 
     FUNCTION = "shuffle_image_batch"
-    CATEGORY = "nilor-nodes"
+    CATEGORY = category + subcategories["utilities"]
 
     def _check_image_dimensions(self, images):
         if images.shape[0] == 0:
@@ -495,7 +495,7 @@ class NilorRepeatTrimImageBatch:
     RETURN_NAMES = ("images",)
 
     FUNCTION = "repeat_trim_image_batch"
-    CATEGORY = "nilor-nodes"
+    CATEGORY = category + subcategories["utilities"]
     
     def _check_image_dimensions(self, images):
         if images.shape[0] == 0:
@@ -535,7 +535,7 @@ class NilorRepeatShuffleTrimImageBatch:
     RETURN_NAMES = ("images",)
 
     FUNCTION = "repeat_shuffle_trim_image_batch"
-    CATEGORY = "nilor-nodes"
+    CATEGORY = category + subcategories["utilities"]
     
     def _check_image_dimensions(self, images):
         if images.shape[0] == 0:
@@ -585,7 +585,7 @@ class NilorOutputFilenameString:
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("string",)
     FUNCTION = "notify"
-    CATEGORY = "nilor-nodes"
+    CATEGORY = category + subcategories["utilities"]
     OUTPUT_NODE = True
     IS_CHANGED = True
 
