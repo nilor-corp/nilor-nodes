@@ -737,6 +737,43 @@ class NilorOutputFilenameString:
         return {"ui": {"text": text}, "result": (text,)}
 
 
+class NilorNFractionsOfInt:
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "numerator": ("INT", {"default": 10}),
+                "denominator": ("INT", {"default": 2}),
+                "type": (["starts","ends", "centres", "start + end"], {}),
+            },
+        }
+
+    RETURN_TYPES = ("INT",)
+    RETURN_NAMES = ("fractions",)
+
+    FUNCTION = "n_fractions_of_int"
+    CATEGORY = category + subcategories["utilities"]
+    OUTPUT_IS_LIST = (True,)
+
+    def n_fractions_of_int(self, numerator, denominator, type):
+        # the number of fractions to generate is the denominator
+        if type == "starts":
+            return ([i * numerator // denominator for i in range(denominator)],)
+        elif type == "ends":
+            return ([(i + 1) * numerator // denominator for i in range(denominator)],)
+        elif type == "centres":
+            return ([(i * numerator + numerator // 2) // denominator for i in range(denominator)],)
+        elif type == "start + end":
+            return ([i * numerator // (denominator - 1) for i in range(denominator)],)
+        else:
+            raise ValueError(f"Unknown type: {type}")
+
+
+
+
 # Mapping class names to objects for potential export
 NODE_CLASS_MAPPINGS = {
     "Nilor Interpolated Float List": NilorInterpolatedFloatList,
@@ -753,7 +790,8 @@ NODE_CLASS_MAPPINGS = {
     "Nilor Shuffle Image Batch": NilorShuffleImageBatch,
     "Nilor Repeat & Trim Image Batch": NilorRepeatTrimImageBatch,
     "Nilor Repeat, Shuffle, & Trim Image Batch": NilorRepeatShuffleTrimImageBatch,
-    "Nilor Output Filename String": NilorOutputFilenameString
+    "Nilor Output Filename String": NilorOutputFilenameString,
+    "Nilor n Fractions of Int": NilorNFractionsOfInt
 }
 
 # Mapping nodes to human-readable names
@@ -772,5 +810,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "Nilor Shuffle Image Batch": "👺 Nilor Shuffle Image Batch",
     "Nilor Repeat & Trim Image Batch": "👺 Nilor Repeat & Trim Image Batch",
     "Nilor Repeat, Shuffle, & Trim Image Batch": "👺 Nilor Repeat, Shuffle, & Trim Image Batch",
-    "Nilor Output Filename String": "👺 Nilor Output Filename String"
+    "Nilor Output Filename String": "👺 Nilor Output Filename String",
+    "Nilor n Fractions of Int": "👺 Nilor n Fractions of Int"
 }
