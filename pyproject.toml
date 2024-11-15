@@ -1,7 +1,7 @@
 [project]
 name = "nilor-nodes"
 description = "Custom utility nodes for ComfyUI by Nilor Corp. Probably not useful for most people, but contains stuff for working with lists, filenames, image batches, etc in a very specifc way."
-version = "1.0.0"
+version = "1.0.1"
 license = {file = "LICENSE"}
 dependencies = ["huggingface_hub", "openexr"]
 
