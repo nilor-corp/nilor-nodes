@@ -13,6 +13,7 @@ import OpenEXR
 import Imath
 import folder_paths
 import torch
+import builtins
 
 BIGMIN = -(2**53 - 1)
 BIGMAX = 2**53 - 1
@@ -908,7 +909,7 @@ class NilorCategorizeString:
 
         # Check each category's keywords against the input string
         for index, keywords in categories.items():
-            if any(keyword in input_string for keyword in keywords):
+            if builtins.any(keyword in input_string for keyword in keywords):
                 return (index,)
 
         return (-1,)  # Default case if no matches found
