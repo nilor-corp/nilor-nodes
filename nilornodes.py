@@ -836,6 +836,82 @@ class NilorNFractionsOfInt:
             raise ValueError(f"Unknown type: {type}")
 
 
+class NilorCategorizeString:
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "input_string": ("STRING", {"default": ""}),
+                "number_of_categories": ("INT", {"default": 2, "min": 1, "max": 10}),
+                "category_0": ("STRING", {"default": "apple, red fruit"}),
+                "category_1": ("STRING", {"default": "banana, yellow fruit"}),
+            },
+            "optional": {
+                "category_2": ("STRING", {"default": ""}),
+                "category_3": ("STRING", {"default": ""}),
+                "category_4": ("STRING", {"default": ""}),
+                "category_5": ("STRING", {"default": ""}),
+                "category_6": ("STRING", {"default": ""}),
+                "category_7": ("STRING", {"default": ""}),
+                "category_8": ("STRING", {"default": ""}),
+                "category_9": ("STRING", {"default": ""}),
+            },
+        }
+
+    RETURN_TYPES = ("INT",)
+    RETURN_NAMES = ("category_index",)
+    FUNCTION = "categorize_string"
+    CATEGORY = category + subcategories["utilities"]
+
+    def categorize_string(
+        self,
+        input_string,
+        number_of_categories,
+        category_0,
+        category_1,
+        category_2="",
+        category_3="",
+        category_4="",
+        category_5="",
+        category_6="",
+        category_7="",
+        category_8="",
+        category_9="",
+    ):
+        # Convert input string to lowercase for case-insensitive matching
+        input_string = input_string.lower()
+
+        # Create categories dictionary from inputs
+        categories = {}
+        all_categories = [
+            category_0,
+            category_1,
+            category_2,
+            category_3,
+            category_4,
+            category_5,
+            category_6,
+            category_7,
+            category_8,
+            category_9,
+        ]
+
+        # Only process the number of categories specified
+        for i in range(number_of_categories):
+            if all_categories[i]:  # Only add non-empty categories
+                # Split the comma-separated string and clean up whitespace
+                keywords = [k.strip().lower() for k in all_categories[i].split(",")]
+                categories[i] = keywords
+
+        # Check each category's keywords against the input string
+        for index, keywords in categories.items():
+            if any(keyword in input_string for keyword in keywords):
+                return (index,)
+
+        return (-1,)  # Default case if no matches found
 
 
 # Mapping class names to objects for potential export
@@ -855,7 +931,8 @@ NODE_CLASS_MAPPINGS = {
     "Nilor Repeat & Trim Image Batch": NilorRepeatTrimImageBatch,
     "Nilor Repeat, Shuffle, & Trim Image Batch": NilorRepeatShuffleTrimImageBatch,
     "Nilor Output Filename String": NilorOutputFilenameString,
-    "Nilor n Fractions of Int": NilorNFractionsOfInt
+    "Nilor n Fractions of Int": NilorNFractionsOfInt,
+    "Nilor Categorize String": NilorCategorizeString,
 }
 
 # Mapping nodes to human-readable names
@@ -875,5 +952,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "Nilor Repeat & Trim Image Batch": "👺 Nilor Repeat & Trim Image Batch",
     "Nilor Repeat, Shuffle, & Trim Image Batch": "👺 Nilor Repeat, Shuffle, & Trim Image Batch",
     "Nilor Output Filename String": "👺 Nilor Output Filename String",
-    "Nilor n Fractions of Int": "👺 Nilor n Fractions of Int"
+    "Nilor n Fractions of Int": "👺 Nilor n Fractions of Int",
+    "Nilor Categorize String": "👺 Categorize String",
 }
