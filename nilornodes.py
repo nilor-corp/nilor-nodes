@@ -14,8 +14,8 @@ import Imath
 import folder_paths
 import torch
 
-BIGMIN = -(2**53-1)
-BIGMAX = (2**53-1)
+BIGMIN = -(2**53 - 1)
+BIGMAX = 2**53 - 1
 
 category = "Nilor Nodes 👺"
 subcategories = {
@@ -23,6 +23,8 @@ subcategories = {
     "utilities": "/Utilities",
     "io": "/IO",
 }
+
+
 class AnyType(str):
     """A special class that is always equal in not equal comparisons. Credit to pythongosssss"""
 
@@ -36,9 +38,7 @@ class AnyType(str):
 any = AnyType("*")
 
 
-
-
-class NilorInterpolatedFloatList: # Generate interpolated float values based on a number of sections
+class NilorInterpolatedFloatList:  # Generate interpolated float values based on a number of sections
     def __init__(self):
         pass
 
@@ -50,7 +50,10 @@ class NilorInterpolatedFloatList: # Generate interpolated float values based on 
                 "number_of_floats": ("INT", {"forceInput": False}),
                 "number_of_sections": ("INT", {"forceInput": False}),
                 "section_number": ("INT", {"forceInput": False}),
-                "interpolation_type": (["slinear","quadratic", "cubic"], {}),  # Type of interpolation to use
+                "interpolation_type": (
+                    ["slinear", "quadratic", "cubic"],
+                    {},
+                ),  # Type of interpolation to use
             },
         }
 
@@ -70,7 +73,9 @@ class NilorInterpolatedFloatList: # Generate interpolated float values based on 
         f = interp1d(x, y, kind=interp_type)
         return f(x)
 
-    def generate_float_list(self, number_of_floats, number_of_sections, section_number, interpolation_type):
+    def generate_float_list(
+        self, number_of_floats, number_of_sections, section_number, interpolation_type
+    ):
         # Initializes the array with zeros
         my_floats = [0.0] * number_of_floats
         # Calculate the length of each portion based on total frames and number of images
@@ -78,11 +83,15 @@ class NilorInterpolatedFloatList: # Generate interpolated float values based on 
 
         # Handling the first image (special case for the first segment)
         if section_number == 1:
-            portion_values = self.interpolate_values(1, 0, portion_length, interpolation_type)
+            portion_values = self.interpolate_values(
+                1, 0, portion_length, interpolation_type
+            )
             my_floats[0:portion_length] = portion_values
         # Handling the last image (special case for the last segment)
         elif section_number == number_of_sections:
-            portion_values = self.interpolate_values(0, 1, portion_length, interpolation_type)
+            portion_values = self.interpolate_values(
+                0, 1, portion_length, interpolation_type
+            )
             start_index = int((number_of_sections - 2) * portion_length)
             my_floats[start_index:] = portion_values
         # Handling middle images (general case for dual segments)
@@ -98,7 +107,7 @@ class NilorInterpolatedFloatList: # Generate interpolated float values based on 
             my_floats[start_index:end_index] = portion_values
         # Returns the modified list of float values
         return (my_floats,)
-    
+
 
 class NilorOneMinusFloatList:
     def __init__(self):
@@ -116,13 +125,14 @@ class NilorOneMinusFloatList:
     # Define return types and names for outputs of the node
     RETURN_TYPES = ("FLOAT",)
     RETURN_NAMES = ("floats",)
-    
+
     FUNCTION = "one_minus_float_list"
     CATEGORY = category + subcategories["generators"]
 
     def one_minus_float_list(self, list_of_floats):
         return ([1 - x for x in list_of_floats],)
-    
+
+
 class NilorRemapFloatList:
     def __init__(self):
         pass
@@ -143,11 +153,13 @@ class NilorRemapFloatList:
     # Define return types and names for outputs of the node
     RETURN_TYPES = ("FLOAT",)
     RETURN_NAMES = ("remapped_floats",)
-    
+
     FUNCTION = "remap_float_list"
     CATEGORY = category + subcategories["generators"]
 
-    def remap_float_list(self, list_of_floats, min_input, max_input, min_output, max_output):
+    def remap_float_list(
+        self, list_of_floats, min_input, max_input, min_output, max_output
+    ):
         # Avoid division by zero
         if max_input - min_input == 0:
             raise ValueError("max_input and min_input cannot be the same value.")
@@ -173,7 +185,7 @@ class NilorRemapFloatListAutoInput:
     # Define return types and names for outputs of the node
     RETURN_TYPES = ("FLOAT",)
     RETURN_NAMES = ("remapped_list",)
-    
+
     FUNCTION = "remap_float_list_auto_input"
     CATEGORY = category + subcategories["generators"]
 
@@ -183,8 +195,8 @@ class NilorRemapFloatListAutoInput:
 
         scale = (max_output - min_output) / (max_input - min_input)
         return ([min_output + (x - min_input) * scale for x in list_of_floats],)
-    
-    
+
+
 class NilorInverseMapFloatList:
     def __init__(self):
         pass
@@ -206,11 +218,12 @@ class NilorInverseMapFloatList:
     def inverse_map_float_list(self, list_of_floats):
         if not list_of_floats:
             raise ValueError("The input list_of_floats cannot be empty.")
-        
+
         min_input = min(list_of_floats)
         max_input = max(list_of_floats)
 
         return ([min_input + max_input - x for x in list_of_floats],)
+
 
 class NilorIntToListOfBools:
     def __init__(self):
@@ -244,6 +257,7 @@ class NilorIntToListOfBools:
 
         return (my_bools,)
 
+
 class NilorListOfInts:
     def __init__(self):
         pass
@@ -262,7 +276,9 @@ class NilorListOfInts:
     RETURN_NAMES = ("ints",)
     FUNCTION = "int_list"
     CATEGORY = category + subcategories["generators"]
-    OUTPUT_IS_LIST = (True,)  # Indicates that the output should be processed as a list of individual elements
+    OUTPUT_IS_LIST = (
+        True,
+    )  # Indicates that the output should be processed as a list of individual elements
 
     def int_list(self, min=1, max=10, shuffle=False):
         # Generate the list
@@ -271,6 +287,7 @@ class NilorListOfInts:
             random.shuffle(ints_list)
 
         return (ints_list,)
+
 
 class NilorCountImagesInDirectory:
     def __init__(self):
@@ -307,6 +324,7 @@ class NilorCountImagesInDirectory:
 
         return [count]
 
+
 class NilorSelectIndexFromList:
     def __init__(self):
         pass
@@ -315,7 +333,10 @@ class NilorSelectIndexFromList:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "list_of_any": (any, {"forceInput": False}),  # Marking as lazy if processing could be deferred
+                "list_of_any": (
+                    any,
+                    {"forceInput": False},
+                ),  # Marking as lazy if processing could be deferred
                 "index": ("INT", {"default": 0}),
             },
         }
@@ -337,13 +358,14 @@ class NilorSelectIndexFromList:
         # Handle index access safely
         if isinstance(index, list):
             index = index[0]
-        
+
         # Ensure the index is within bounds
         if index < 0 or index >= len(actual_list):
             raise ValueError("Index is outside the bounds of the array.")
 
         # Returns the value at the given index
         return (actual_list[index],)
+
 
 class NilorSaveEXRArbitrary:
     def __init__(self):
@@ -354,7 +376,9 @@ class NilorSaveEXRArbitrary:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "channels": (any,),  # This should match the 'any' type list from List of Any
+                "channels": (
+                    any,
+                ),  # This should match the 'any' type list from List of Any
                 "filename_prefix": ("STRING", {"default": "output"}),
             },
             "hidden": {
@@ -366,12 +390,14 @@ class NilorSaveEXRArbitrary:
     RETURN_TYPES = ()
 
     FUNCTION = "save_exr_arbitrary"  # The execution function
-    CATEGORY = category + subcategories["io"] 
-    
-    # INPUT_IS_LIST = True 
-    OUTPUT_NODE = True  
+    CATEGORY = category + subcategories["io"]
 
-    def save_exr_arbitrary(self, channels=None, filename_prefix="output", prompt=None, extra_pnginfo=None):
+    # INPUT_IS_LIST = True
+    OUTPUT_NODE = True
+
+    def save_exr_arbitrary(
+        self, channels=None, filename_prefix="output", prompt=None, extra_pnginfo=None
+    ):
 
         print("Running save_exr_arbitrary")
         # print(f"channels: {channels}")
@@ -391,10 +417,19 @@ class NilorSaveEXRArbitrary:
         # File path handling
         useabs = os.path.isabs(filename_prefix)
         if not useabs:
-            full_output_folder, filename, counter, subfolder, filename_prefix = folder_paths.get_save_image_path(filename_prefix, self.output_dir, actual_channels[0].shape[-1], actual_channels[0].shape[-2])
+            full_output_folder, filename, counter, subfolder, filename_prefix = (
+                folder_paths.get_save_image_path(
+                    filename_prefix,
+                    self.output_dir,
+                    actual_channels[0].shape[-1],
+                    actual_channels[0].shape[-2],
+                )
+            )
 
         # Determine if the input contains a batch
-        is_batch = len(actual_channels[0].shape) == 3  # If batch, shape is [batch_size, height, width]
+        is_batch = (
+            len(actual_channels[0].shape) == 3
+        )  # If batch, shape is [batch_size, height, width]
         if is_batch:
             batch_size = actual_channels[0].shape[0]
         else:
@@ -403,7 +438,9 @@ class NilorSaveEXRArbitrary:
         for i in range(batch_size):
             # Extract each image's channels
             if is_batch:
-                image_channels = [tensor[i] for tensor in actual_channels]  # For batch, select i-th image
+                image_channels = [
+                    tensor[i] for tensor in actual_channels
+                ]  # For batch, select i-th image
             else:
                 image_channels = actual_channels  # For single image, use channels as is
 
@@ -414,8 +451,10 @@ class NilorSaveEXRArbitrary:
                     raise ValueError("All input tensors must have the same dimensions")
 
             # Channel naming
-            default_names = ["R", "G", "B", "A"] + [f"Channel{j}" for j in range(4, len(image_channels))]
-            
+            default_names = ["R", "G", "B", "A"] + [
+                f"Channel{j}" for j in range(4, len(image_channels))
+            ]
+
             # Prepare data for EXR writing
             exr_data = {}
             for j, tensor in enumerate(image_channels):
@@ -441,21 +480,28 @@ class NilorSaveEXRArbitrary:
 
             # Create the EXR file header with dynamic channel names
             header = OpenEXR.Header(width, height)
-            header['channels'] = {name: Imath.Channel(Imath.PixelType(Imath.PixelType.FLOAT)) for name in exr_data.keys()}
+            header["channels"] = {
+                name: Imath.Channel(Imath.PixelType(Imath.PixelType.FLOAT))
+                for name in exr_data.keys()
+            }
 
             # Create the EXR file
             exr_file = OpenEXR.OutputFile(writepath, header)
 
             # Prepare the data for each channel
-            channel_data = {name: data.astype(np.float32).tobytes() for name, data in exr_data.items()}
+            channel_data = {
+                name: data.astype(np.float32).tobytes()
+                for name, data in exr_data.items()
+            }
 
             # Write the channel data to the EXR file
             exr_file.writePixels(channel_data)
             exr_file.close()
-            
+
             print(f"EXR file saved successfully to {writepath}")
         except Exception as e:
             print(f"Failed to write EXR file: {e}")
+
 
 class NilorSaveVideoToHFDataset:
     def __init__(self) -> None:
@@ -494,6 +540,7 @@ class NilorSaveVideoToHFDataset:
             )
             results.append(name)
         return {"ui": {"string_field": results}}
+
 
 class NilorSaveImageToHFDataset:
     def __init__(self) -> None:
@@ -549,6 +596,7 @@ class NilorSaveImageToHFDataset:
 
         return {"ui": {"string_field": results}}
 
+
 class NilorShuffleImageBatch:
     def __init__(self):
         pass
@@ -558,7 +606,7 @@ class NilorShuffleImageBatch:
         return {
             "required": {
                 "images": ("IMAGE",),
-                "seed": ("INT", {"default": 0, "min": 0, "max": BIGMAX, "step": 1})
+                "seed": ("INT", {"default": 0, "min": 0, "max": BIGMAX, "step": 1}),
             },
         }
 
@@ -571,10 +619,12 @@ class NilorShuffleImageBatch:
     def _check_image_dimensions(self, images):
         if images.shape[0] == 0:
             raise ValueError("Input images tensor is empty.")
-        
+
         # All images in the batch should have the same dimensions
         if len(images.shape) != 4:
-            raise ValueError(f"Expected 4D tensor (batch, channels, height, width), got shape {images.shape}")
+            raise ValueError(
+                f"Expected 4D tensor (batch, channels, height, width), got shape {images.shape}"
+            )
 
     def shuffle_image_batch(self, images: torch.Tensor, seed):
         self._check_image_dimensions(images)
@@ -591,6 +641,7 @@ class NilorShuffleImageBatch:
 
         return (shuffled_images,)
 
+
 class NilorRepeatTrimImageBatch:
     def __init__(self):
         pass
@@ -600,7 +651,7 @@ class NilorRepeatTrimImageBatch:
         return {
             "required": {
                 "images": ("IMAGE",),
-                "count": ("INT", {"default": 1, "min": 1, "max": BIGMAX, "step": 1})
+                "count": ("INT", {"default": 1, "min": 1, "max": BIGMAX, "step": 1}),
             },
         }
 
@@ -609,26 +660,29 @@ class NilorRepeatTrimImageBatch:
 
     FUNCTION = "repeat_trim_image_batch"
     CATEGORY = category + subcategories["utilities"]
-    
+
     def _check_image_dimensions(self, images):
         if images.shape[0] == 0:
             raise ValueError("Input images tensor is empty.")
-        
+
         # All images in the batch should have the same dimensions
         if len(images.shape) != 4:
-            raise ValueError(f"Expected 4D tensor (batch, channels, height, width), got shape {images.shape}")
+            raise ValueError(
+                f"Expected 4D tensor (batch, channels, height, width), got shape {images.shape}"
+            )
 
     def repeat_trim_image_batch(self, images: torch.Tensor, count):
         self._check_image_dimensions(images)
 
         batch_count = images.size(0)
         amount = math.ceil(count / batch_count)
-        
-        appended_tensors = images.repeat(amount, 1, 1, 1),
+
+        appended_tensors = (images.repeat(amount, 1, 1, 1),)
         batched_tensors = torch.cat(appended_tensors, dim=0)
         trimmed_tensors = batched_tensors[:count]
 
         return (trimmed_tensors,)
+
 
 class NilorRepeatShuffleTrimImageBatch:
     def __init__(self):
@@ -640,7 +694,7 @@ class NilorRepeatShuffleTrimImageBatch:
             "required": {
                 "images": ("IMAGE",),
                 "seed": ("INT", {"default": 0, "min": 0, "max": BIGMAX, "step": 1}),
-                "count": ("INT", {"default": 1, "min": 1, "max": BIGMAX, "step": 1})
+                "count": ("INT", {"default": 1, "min": 1, "max": BIGMAX, "step": 1}),
             },
         }
 
@@ -649,15 +703,17 @@ class NilorRepeatShuffleTrimImageBatch:
 
     FUNCTION = "repeat_shuffle_trim_image_batch"
     CATEGORY = category + subcategories["utilities"]
-    
+
     def _check_image_dimensions(self, images):
         if images.shape[0] == 0:
             raise ValueError("Input images tensor is empty.")
-        
+
         # All images in the batch should have the same dimensions
         if len(images.shape) != 4:
-            raise ValueError(f"Expected 4D tensor (batch, channels, height, width), got shape {images.shape}")
-    
+            raise ValueError(
+                f"Expected 4D tensor (batch, channels, height, width), got shape {images.shape}"
+            )
+
     def repeat_shuffle_trim_image_batch(self, images: torch.Tensor, seed, count):
         self._check_image_dimensions(images)
 
@@ -670,11 +726,12 @@ class NilorRepeatShuffleTrimImageBatch:
         while len(appended_tensors) < count:
             indices = torch.randperm(batch_count)
             appended_tensors.append(images[indices])
-        
+
         batched_tensors = torch.cat(appended_tensors, dim=0)
         trimmed_tensors = batched_tensors[:count]
 
         return (trimmed_tensors,)
+
 
 class NilorOutputFilenameString:
     def __init__(self):
@@ -706,16 +763,18 @@ class NilorOutputFilenameString:
         now = datetime.now()
         return now.strftime(format)
 
-    def notify(self, client, project, section, name, unique_id=None, extra_pnginfo=None):
+    def notify(
+        self, client, project, section, name, unique_id=None, extra_pnginfo=None
+    ):
         time = self.get_time("%y%m%d-%H%M%S")
-        
+
         client = client or "nilor"
         project = project or "research"
         section = section or "test-1"
         name = name or "out-1"
 
         text = f"{client}_{project}/{section}/{time}_{section}/{time}_{client}_{project}_{section}_{name}"
-        
+
         if unique_id is not None and extra_pnginfo is not None:
             if not isinstance(extra_pnginfo, list):
                 print("Error: extra_pnginfo is not a list")
@@ -733,7 +792,7 @@ class NilorOutputFilenameString:
                 if node:
                     node["widgets_values"] = [text]
 
-        #TODO: make this node's text string preview widget work
+        # TODO: make this node's text string preview widget work
         return {"ui": {"text": text}, "result": (text,)}
 
 
@@ -747,7 +806,7 @@ class NilorNFractionsOfInt:
             "required": {
                 "numerator": ("INT", {"default": 10}),
                 "denominator": ("INT", {"default": 2}),
-                "type": (["starts","ends", "centres", "start + end"], {}),
+                "type": (["starts", "ends", "centres", "start + end"], {}),
             },
         }
 
@@ -765,7 +824,12 @@ class NilorNFractionsOfInt:
         elif type == "ends":
             return ([(i + 1) * numerator // denominator for i in range(denominator)],)
         elif type == "centres":
-            return ([(i * numerator + numerator // 2) // denominator for i in range(denominator)],)
+            return (
+                [
+                    (i * numerator + numerator // 2) // denominator
+                    for i in range(denominator)
+                ],
+            )
         elif type == "start + end":
             return ([i * numerator // (denominator - 1) for i in range(denominator)],)
         else:
