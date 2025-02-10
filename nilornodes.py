@@ -915,6 +915,57 @@ class NilorCategorizeString:
         return (-1,)  # Default case if no matches found
 
 
+class NilorRandomString:
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "multiline_text": (
+                    "STRING",
+                    {"default": "option1, option2, option3", "multiline": True},
+                ),
+                "max_options": ("INT", {"default": 3, "min": 1}),
+                "delimiter": ("STRING", {"default": ","}),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0xFFFFFFFFFFFFFFFF}),
+            },
+        }
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("chosen_string",)
+    FUNCTION = "choose_random_string"
+    CATEGORY = category + subcategories["utilities"]
+
+    def choose_random_string(self, multiline_text, max_options, delimiter, seed):
+        import random
+
+        random.seed(seed)
+
+        # If the delimiter is literally "\n", use the actual newline character.
+        if delimiter == r"\n" or delimiter == "\\n":
+            actual_delimiter = "\n"
+        else:
+            actual_delimiter = delimiter
+
+        # Split the input text using the actual delimiter and remove any extra whitespace
+        options = [
+            item.strip()
+            for item in multiline_text.split(actual_delimiter)
+            if item.strip()
+        ]
+        if not options:
+            raise ValueError("No valid choices provided.")
+
+        # Limit to the first 'max_options' entries if there are more options
+        if len(options) > max_options:
+            options = options[:max_options]
+
+        chosen = random.choice(options)
+        return (chosen,)
+
+
 # Mapping class names to objects for potential export
 NODE_CLASS_MAPPINGS = {
     "Nilor Interpolated Float List": NilorInterpolatedFloatList,
@@ -934,6 +985,7 @@ NODE_CLASS_MAPPINGS = {
     "Nilor Output Filename String": NilorOutputFilenameString,
     "Nilor n Fractions of Int": NilorNFractionsOfInt,
     "Nilor Categorize String": NilorCategorizeString,
+    "Nilor Random String": NilorRandomString,
 }
 
 # Mapping nodes to human-readable names
@@ -955,4 +1007,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "Nilor Output Filename String": "👺 Nilor Output Filename String",
     "Nilor n Fractions of Int": "👺 Nilor n Fractions of Int",
     "Nilor Categorize String": "👺 Categorize String",
+    "Nilor Random String": "👺 Random String",
 }
