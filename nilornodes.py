@@ -14,6 +14,7 @@ import Imath
 import folder_paths
 import torch
 import builtins
+from pathlib import Path
 
 BIGMIN = -(2**53 - 1)
 BIGMAX = 2**53 - 1
@@ -966,6 +967,37 @@ class NilorRandomString:
         return (chosen,)
 
 
+class NilorExtractFilenameFromPath:
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "filepath": ("STRING", {"default": ""}),
+            },
+        }
+
+    RETURN_TYPES = ("STRING", "STRING")
+    RETURN_NAMES = ("name", "name_with_extension")
+    FUNCTION = "extract_filename"
+    CATEGORY = category + subcategories["utilities"]
+
+    def extract_filename(self, filepath):
+        # Ensure the input is a valid path
+        if not filepath:
+            raise ValueError("Filepath cannot be empty.")
+
+        path = Path(filepath)
+
+        # Extract filename with and without extension
+        name = path.stem  # Filename without extension
+        name_with_extension = path.name  # Filename with extension
+
+        return (name, name_with_extension)
+
+
 # Mapping class names to objects for potential export
 NODE_CLASS_MAPPINGS = {
     "Nilor Interpolated Float List": NilorInterpolatedFloatList,
@@ -986,6 +1018,7 @@ NODE_CLASS_MAPPINGS = {
     "Nilor n Fractions of Int": NilorNFractionsOfInt,
     "Nilor Categorize String": NilorCategorizeString,
     "Nilor Random String": NilorRandomString,
+    "Nilor Extract Filename from Path": NilorExtractFilenameFromPath,
 }
 
 # Mapping nodes to human-readable names
@@ -1008,4 +1041,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "Nilor n Fractions of Int": "👺 Nilor n Fractions of Int",
     "Nilor Categorize String": "👺 Categorize String",
     "Nilor Random String": "👺 Random String",
+    "Nilor Extract Filename from Path": "👺 Extract Filename from Path",
 }
