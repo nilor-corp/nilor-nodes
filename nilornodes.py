@@ -967,6 +967,84 @@ class NilorRandomString:
         return (chosen,)
 
 
+class NilorLoadImageByIndex:
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "image_directory": (
+                    "STRING",
+                    {"default": "", "placeholder": "Image Directory"},
+                ),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0xFFFFFFFFFFFFFFFF}),
+                "sort_mode": (
+                    ["filename", "creation_time", "modification_time", "size"],
+                    {"default": "filename"},
+                ),
+                "reverse_sort": ("BOOLEAN", {"default": False}),
+            },
+        }
+
+    RETURN_TYPES = ("IMAGE", "STRING", "STRING")
+    RETURN_NAMES = ("image", "filename", "filepath")
+    FUNCTION = "load_image_by_index"
+    CATEGORY = category + subcategories["io"]
+
+    @classmethod
+    def IS_CHANGED(s, image_directory, seed, sort_mode, reverse_sort):
+        return seed
+
+    # Helper function equivalent to Mikey's pil2tensor
+    def pil2tensor(self, image):
+        return torch.from_numpy(np.array(image).astype(np.float32) / 255.0).unsqueeze(0)
+
+    def load_image_by_index(self, image_directory, seed, sort_mode, reverse_sort):
+        if not os.path.exists(image_directory):
+            raise FileNotFoundError(f"Image directory {image_directory} does not exist")
+
+        # Get list of image files
+        files = []
+        for f in os.listdir(image_directory):
+            file_path = os.path.join(image_directory, f)
+            if os.path.isfile(file_path) and f.lower().endswith(
+                (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif")
+            ):
+                files.append(file_path)
+
+        if not files:
+            raise ValueError(f"No image files found in {image_directory}")
+
+        # Sort files based on selected mode
+        if sort_mode == "filename":
+            files.sort()
+        elif sort_mode == "creation_time":
+            files.sort(key=lambda x: os.path.getctime(x))
+        elif sort_mode == "modification_time":
+            files.sort(key=lambda x: os.path.getmtime(x))
+        elif sort_mode == "size":
+            files.sort(key=lambda x: os.path.getsize(x))
+
+        # Apply reverse sort if requested
+        if reverse_sort:
+            files.reverse()
+
+        # Get file at index (with wrapping)
+        file_index = seed % len(files)
+        selected_file = files[file_index]
+
+        # Get filename
+        filename = os.path.basename(selected_file)
+
+        # Load image using PIL and convert to tensor using our helper function
+        img = Image.open(selected_file)
+        img_tensor = self.pil2tensor(img)
+
+        return (img_tensor, filename, selected_file)
+
+
 class NilorExtractFilenameFromPath:
     def __init__(self):
         pass
@@ -1019,6 +1097,7 @@ NODE_CLASS_MAPPINGS = {
     "Nilor Categorize String": NilorCategorizeString,
     "Nilor Random String": NilorRandomString,
     "Nilor Extract Filename from Path": NilorExtractFilenameFromPath,
+    "Nilor Load Image By Index": NilorLoadImageByIndex,
 }
 
 # Mapping nodes to human-readable names
@@ -1042,4 +1121,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "Nilor Categorize String": "👺 Categorize String",
     "Nilor Random String": "👺 Random String",
     "Nilor Extract Filename from Path": "👺 Extract Filename from Path",
+    "Nilor Load Image By Index": "👺 Load Image By Index",
 }
