@@ -999,10 +999,6 @@ class NilorLoadImageByIndex:
     def IS_CHANGED(s, image_directory, seed, sort_mode, reverse_sort):
         return seed
 
-    ## Helper function equivalent to Mikey's pil2tensor
-    #def pil2tensor(self, image):
-    #    return torch.from_numpy(np.array(image).astype(np.float32) / 255.0).unsqueeze(0)
-
     def load_image_by_index(self, image_directory, seed, sort_mode, reverse_sort):
         if not os.path.exists(image_directory):
             raise FileNotFoundError(f"Image directory {image_directory} does not exist")
