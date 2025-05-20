@@ -15,6 +15,8 @@ import folder_paths
 import torch
 import builtins
 from pathlib import Path
+import cv2
+from .utils import pil2tensor, tensor2pil
 
 BIGMIN = -(2**53 - 1)
 BIGMAX = 2**53 - 1
@@ -997,9 +999,9 @@ class NilorLoadImageByIndex:
     def IS_CHANGED(s, image_directory, seed, sort_mode, reverse_sort):
         return seed
 
-    # Helper function equivalent to Mikey's pil2tensor
-    def pil2tensor(self, image):
-        return torch.from_numpy(np.array(image).astype(np.float32) / 255.0).unsqueeze(0)
+    ## Helper function equivalent to Mikey's pil2tensor
+    #def pil2tensor(self, image):
+    #    return torch.from_numpy(np.array(image).astype(np.float32) / 255.0).unsqueeze(0)
 
     def load_image_by_index(self, image_directory, seed, sort_mode, reverse_sort):
         if not os.path.exists(image_directory):
@@ -1040,7 +1042,7 @@ class NilorLoadImageByIndex:
 
         # Load image using PIL and convert to tensor using our helper function
         img = Image.open(selected_file)
-        img_tensor = self.pil2tensor(img)
+        img_tensor = pil2tensor(img)
 
         return (img_tensor, filename, selected_file)
 
@@ -1076,6 +1078,90 @@ class NilorExtractFilenameFromPath:
         return (name, name_with_extension)
 
 
+class NilorBlurAnalysis:
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "images": ("IMAGE",),  # Input image batch as a 4D tensor.
+                "block_size": ("INT", {"default": 32, "min": 1, "max": 128, "step": 1}),
+            },
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("blur_analysis",)
+    FUNCTION = "analyze_blur"
+    CATEGORY = category + subcategories["utilities"]
+
+    def analyze_blur(self, images, block_size):
+        """
+        Performs blur analysis on each image using OpenCV's Laplacian method.
+        """
+        # Ensure images is a 4D tensor.
+        if images.dim() != 4:
+            raise ValueError("Input images must be a 4D tensor (batch, channels/height, height/width, width/channels)")
+
+        # Detect if using NCHW or NHWC.
+        if images.shape[1] not in (1, 3):
+            if images.shape[-1] in (1, 3):
+                images = images.permute(0, 3, 1, 2)
+            else:
+                raise ValueError("Cannot determine image format (expected channel to be 1 or 3).")
+
+        output_images = []
+        batch_size = images.shape[0]
+        for i in range(batch_size):
+            # Get the i-th image (in NCHW: [channels, height, width]).
+            img_tensor = images[i].cpu()
+            img_np = img_tensor.numpy()  # shape: (C, H, W)
+
+            # Convert to grayscale.
+            if img_np.shape[0] >= 3:
+                gray = (0.299 * img_np[0] +
+                        0.587 * img_np[1] +
+                        0.114 * img_np[2])
+            else:
+                gray = np.squeeze(img_np, axis=0)  # shape: (H, W)
+
+            # Scale from [0, 1] to [0, 255] and convert to uint8.
+            gray = np.clip(gray * 255.0, 0, 255).astype(np.uint8)
+
+            # Compute Laplacian using a 3x3 kernel.
+            lap = cv2.Laplacian(gray, cv2.CV_64F, ksize=3)
+            abs_lap = np.absolute(lap)
+
+            # Apply local averaging using cv2.blur with window size = (block_size, block_size).
+            local_edge = cv2.blur(abs_lap, (block_size, block_size))
+
+            # Normalize and invert the edge response.
+            max_val = local_edge.max()
+            if max_val > 0:
+                norm_edge = local_edge / max_val
+            else:
+                norm_edge = local_edge
+            blur_map = 1.0 - norm_edge
+
+            # Scale back to 0-255 and convert to uint8.
+            out_img = (blur_map * 255.0).astype(np.uint8)
+
+            # Convert the single channel output to a 3-channel image.
+            # This ensures downstream nodes (like MaskFromRGBCMYBW) that index into channels work properly.
+            if out_img.ndim == 2:
+                out_img = np.stack([out_img, out_img, out_img], axis=-1)  # shape becomes (H, W, 3)
+
+            # Convert from PIL image (or numpy array) to tensor.
+            # pil2tensor should create a tensor in a format that downstream nodes expect.
+            output_images.append(pil2tensor(out_img))
+
+        # ---
+        # Fix 2: Use torch.stack to preserve the batch dimension.
+        # If each output has shape, say, (H, W, 3), stacking them gives a tensor of shape (B, H, W, 3).
+        return (torch.cat(output_images, dim=0),)
+
+
 # Mapping class names to objects for potential export
 NODE_CLASS_MAPPINGS = {
     "Nilor Interpolated Float List": NilorInterpolatedFloatList,
@@ -1098,6 +1184,7 @@ NODE_CLASS_MAPPINGS = {
     "Nilor Random String": NilorRandomString,
     "Nilor Extract Filename from Path": NilorExtractFilenameFromPath,
     "Nilor Load Image By Index": NilorLoadImageByIndex,
+    "Nilor Blur Analysis": NilorBlurAnalysis,
 }
 
 # Mapping nodes to human-readable names
@@ -1122,4 +1209,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "Nilor Random String": "👺 Random String",
     "Nilor Extract Filename from Path": "👺 Extract Filename from Path",
     "Nilor Load Image By Index": "👺 Load Image By Index",
+    "Nilor Blur Analysis": "👺 Blur Analysis",
 }
