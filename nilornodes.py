@@ -1157,29 +1157,36 @@ class NilorBlurAnalysis:
         # If each output has shape, say, (H, W, 3), stacking them gives a tensor of shape (B, H, W, 3).
         return (torch.cat(output_images, dim=0),)
 
-class NilorListOfIntsToString:
+class NilorToSparseIndexMethod:
     def __init__(self):
-        pass
+        pass # Removed self.values initialization
 
     @classmethod
     def INPUT_TYPES(s):
         return {
             "required": {
-                "list_of_ints": ("INT", {"input_is_list": True}),
-                "delimiter": ("STRING", {"default": ","}),
-                "prefix": ("STRING", {"default": ""}),
-                "suffix": ("STRING", {"default": ""}),
+                "ints": ("INT", {"default": 0}),  # Removed input_is_list=True
             },
         }
 
     RETURN_TYPES = ("STRING",)
-    RETURN_NAMES = ("string",)
+    RETURN_NAMES = ("sparse_method",)
+    OUTPUT_IS_LIST = (False,)
+    INPUT_IS_LIST = True  # Added class-level INPUT_IS_LIST
 
-    FUNCTION = "list_of_ints_to_string"
+    FUNCTION = "convert_to_sparse_index_method"
     CATEGORY = category + subcategories["utilities"]
 
-    def list_of_ints_to_string(self, list_of_ints, delimiter, prefix, suffix):
-        return (f"{prefix}{delimiter.join(map(str, list_of_ints))}{suffix}",)
+    def convert_to_sparse_index_method(self, ints):
+        # 'ints' will now be the full list of integers, e.g., [0, 32, 64, 96]
+        # We can directly join them into a comma-separated string.
+        indexes_str = ",".join(map(str, ints))
+        
+        print(f"NilorToSparseIndexMethod output: {indexes_str}")
+        print(f"Type of output: {type(indexes_str)}")
+        
+        return (indexes_str,)
+
 
 # Mapping class names to objects for potential export
 NODE_CLASS_MAPPINGS = {
@@ -1205,7 +1212,7 @@ NODE_CLASS_MAPPINGS = {
     "Nilor Extract Filename from Path": NilorExtractFilenameFromPath,
     "Nilor Load Image By Index": NilorLoadImageByIndex,
     "Nilor Blur Analysis": NilorBlurAnalysis,
-    "Nilor List of Ints to String": NilorListOfIntsToString,
+    "Nilor To Sparse Index Method": NilorToSparseIndexMethod,
 }
 
 # Mapping nodes to human-readable names
@@ -1232,5 +1239,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "Nilor Extract Filename from Path": "👺 Extract Filename from Path",
     "Nilor Load Image By Index": "👺 Load Image By Index",
     "Nilor Blur Analysis": "👺 Blur Analysis",
-    "Nilor List of Ints to String": "👺 List of Ints to String",
+    "Nilor To Sparse Index Method": "👺 To Sparse Index Method",
 }
