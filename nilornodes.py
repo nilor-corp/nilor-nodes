@@ -1157,6 +1157,29 @@ class NilorBlurAnalysis:
         # If each output has shape, say, (H, W, 3), stacking them gives a tensor of shape (B, H, W, 3).
         return (torch.cat(output_images, dim=0),)
 
+class NilorListOfIntsToString:
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "list_of_ints": ("INT", {"input_is_list": True}),
+                "delimiter": ("STRING", {"default": ","}),
+                "prefix": ("STRING", {"default": ""}),
+                "suffix": ("STRING", {"default": ""}),
+            },
+        }
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("string",)
+
+    FUNCTION = "list_of_ints_to_string"
+    CATEGORY = category + subcategories["utilities"]
+
+    def list_of_ints_to_string(self, list_of_ints, delimiter, prefix, suffix):
+        return (f"{prefix}{delimiter.join(map(str, list_of_ints))}{suffix}",)
 
 # Mapping class names to objects for potential export
 NODE_CLASS_MAPPINGS = {
@@ -1182,6 +1205,7 @@ NODE_CLASS_MAPPINGS = {
     "Nilor Extract Filename from Path": NilorExtractFilenameFromPath,
     "Nilor Load Image By Index": NilorLoadImageByIndex,
     "Nilor Blur Analysis": NilorBlurAnalysis,
+    "Nilor List of Ints to String": NilorListOfIntsToString,
 }
 
 # Mapping nodes to human-readable names
@@ -1208,4 +1232,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "Nilor Extract Filename from Path": "👺 Extract Filename from Path",
     "Nilor Load Image By Index": "👺 Load Image By Index",
     "Nilor Blur Analysis": "👺 Blur Analysis",
+    "Nilor List of Ints to String": "👺 List of Ints to String",
 }
