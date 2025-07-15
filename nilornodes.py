@@ -1165,24 +1165,20 @@ class NilorToSparseIndexMethod:
     def INPUT_TYPES(s):
         return {
             "required": {
-                "ints": ("INT", {"default": 0}), # Removed input_is_list=True
+                "ints": ("INT", {"default": 0}),
             },
         }
 
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("sparse_method",)
     OUTPUT_IS_LIST = (False,)
-    INPUT_IS_LIST = True # Crucial: Receive entire list in one go
+    INPUT_IS_LIST = True
 
     FUNCTION = "convert_to_sparse_index_method"
     CATEGORY = category + subcategories["utilities"]
 
     def convert_to_sparse_index_method(self, ints):
-        # 'ints' will now be the full list of integers, e.g., [0, 32, 64, 96]
         indexes_str = ",".join(map(str, ints))
-        
-        print(f"NilorToSparseIndexMethod final output: {indexes_str}")
-        print(f"Type of final output: {type(indexes_str)}")
         
         return (indexes_str,)
 
