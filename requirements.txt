@@ -1,2 +1,6 @@
 huggingface_hub
 openexr
+fastapi
+uvicorn
+python-multipart
+aiofiles
