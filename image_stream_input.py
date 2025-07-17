@@ -32,8 +32,9 @@ uvicorn_server: uvicorn.Server = None
 # This lock is crucial for thread-safe access between the FastAPI server thread and the ComfyUI main thread.
 job_state_lock = threading.Lock()
 
-# Key: prompt_id (str). Value: List of asyncio.Event objects for each waiting node in that job.
-job_events: dict[str, list[asyncio.Event]] = {}
+# Key: prompt_id (str). Value: Dictionary containing the asyncio loop and a list of event objects.
+# This is necessary for thread-safe communication between the server thread and the ComfyUI thread.
+job_waiters: dict[str, dict[str, any]] = {}
 
 # Stores prompt_ids that have received a trigger. Prevents race conditions.
 triggered_jobs: set[str] = set()
@@ -79,10 +80,11 @@ async def upload_image(prompt_id: str, node_id: str, image_file: UploadFile):
 async def trigger_workflow(prompt_id: str):
     with job_state_lock:
         triggered_jobs.add(prompt_id)
-        if prompt_id in job_events:
-            for event in job_events[prompt_id]:
-                event.set()
-            del job_events[prompt_id]
+        if prompt_id in job_waiters:
+            waiter_info = job_waiters.pop(prompt_id)
+            loop = waiter_info["loop"]
+            for event in waiter_info["events"]:
+                loop.call_soon_threadsafe(event.set)
     return {"status": f"Trigger signal sent for job {prompt_id}"}
 
 @app.post("/cancel_workflow/{prompt_id}", dependencies=[Security(get_api_key)])
@@ -90,16 +92,18 @@ async def cancel_workflow(prompt_id: str):
     with job_state_lock:
         cancelled_jobs.add(prompt_id)
         # Also mark as triggered to unblock any waiters. They will check the cancel flag upon waking.
-        triggered_jobs.add(prompt_id) 
-        if prompt_id in job_events:
-            for event in job_events[prompt_id]:
-                event.set()
-            del job_events[prompt_id]
-    
+        triggered_jobs.add(prompt_id)
+        if prompt_id in job_waiters:
+            waiter_info = job_waiters.pop(prompt_id)
+            loop = waiter_info["loop"]
+            for event in waiter_info["events"]:
+                loop.call_soon_threadsafe(event.set)
+
     # Asynchronously clean up disk resources for the cancelled job
     job_dir = STREAM_JOBS_ROOT / sanitize_id(prompt_id)
     if job_dir.exists():
-        shutil.rmtree(job_dir, ignore_errors=True)
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, lambda: shutil.rmtree(job_dir, ignore_errors=True))
         
     return {"status": f"Cancel signal sent and resources cleaned for job {prompt_id}"}
 
@@ -130,12 +134,15 @@ class ImageStreamInput:
         try:
             with job_state_lock:
                 if prompt_id in triggered_jobs:
-                    pass # Proceed directly to loading
+                    pass  # Proceed directly to loading
                 else:
-                    job_events.setdefault(prompt_id, []).append(event)
+                    loop = asyncio.get_running_loop()
+                    waiter_info = job_waiters.setdefault(prompt_id, {"loop": loop, "events": []})
+                    waiter_info["events"].append(event)
                     must_wait = True
 
             if must_wait:
+                print(f"--- [ImageStreamInput] Node '{node_id}' is waiting for trigger on prompt_id: {prompt_id} ---")
                 await asyncio.wait_for(event.wait(), timeout=float(timeout))
             
             # CRITICAL: Check for cancellation immediately after waking up.
@@ -168,10 +175,10 @@ class ImageStreamInput:
         finally:
             # Guaranteed cleanup to prevent this specific event from leaking.
             with job_state_lock:
-                if prompt_id in job_events and event in job_events[prompt_id]:
-                    job_events[prompt_id].remove(event)
-                    if not job_events[prompt_id]:
-                        del job_events[prompt_id]
+                if prompt_id in job_waiters and event in job_waiters[prompt_id]["events"]:
+                    job_waiters[prompt_id]["events"].remove(event)
+                    if not job_waiters[prompt_id]["events"]:
+                        del job_waiters[prompt_id]
 
 @app.get("/")
 async def root():
