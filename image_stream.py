@@ -13,8 +13,14 @@ from PIL import Image
 import aiofiles.os as aio_os
 import folder_paths
 from dotenv import load_dotenv
+import requests # Add requests for the callback
 
 load_dotenv()
+
+category = "Nilor Nodes 👺"
+subcategories = {
+    "io": "/IO",
+}
 
 # --- Server & Security Configuration ---
 API_KEY = os.getenv("IMAGE_STREAM_API_KEY", "your-super-secret-key")
@@ -110,7 +116,7 @@ async def cancel_workflow(prompt_id: str):
 class ImageStreamInput:
     FUNCTION = "await_and_load_images"
     RETURN_TYPES = ("IMAGE",)
-    CATEGORY = "latent/loaders"
+    CATEGORY = category + subcategories["io"]
 
     @classmethod
     def INPUT_TYPES(s):
@@ -180,6 +186,57 @@ class ImageStreamInput:
                     if not job_waiters[prompt_id]["events"]:
                         del job_waiters[prompt_id]
 
+class ImageStreamOutput:
+    FUNCTION = "send_image_output"
+    RETURN_TYPES = ()
+    CATEGORY = category + subcategories["io"]
+    OUTPUT_NODE = True
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "image": ("IMAGE",),
+                "prompt_id": ("STRING", {"forceInput": True}),
+                "node_id": ("STRING", {"default": "output_1"}),
+                "callback_url": ("STRING", {"default": os.getenv("BRANDO_CALLBACK_URL", "http://127.0.0.1:7861/receive_output")}),
+            }
+        }
+
+    def send_image_output(self, image: torch.Tensor, prompt_id: str, node_id: str, callback_url: str):
+        from io import BytesIO
+        
+        # The `image` tensor is in B,H,W,C format (Batch, Height, Width, Channel).
+        # We iterate through the batch and send each image.
+        for i, single_image_tensor in enumerate(image):
+            img_array = (single_image_tensor.cpu().numpy() * 255.0).clip(0, 255).astype(np.uint8)
+            pil_image = Image.fromarray(img_array)
+
+            # Convert PIL image to bytes
+            buffer = BytesIO()
+            pil_image.save(buffer, format="PNG")
+            buffer.seek(0)
+            
+            # Prepare data for the multipart/form-data request
+            filename = f"output_{prompt_id}_{node_id}_{i}.png"
+            files = {'output_file': (filename, buffer, 'image/png')}
+            payload = {'prompt_id': prompt_id, 'node_id': node_id}
+
+            print(f"--- [ImageStreamOutput] Sending image for {prompt_id}/{node_id} to {callback_url} ---")
+
+            try:
+                # Using `requests` which is already imported for the callback.
+                response = requests.post(callback_url, files=files, data=payload, timeout=20)
+                response.raise_for_status()
+                print(f"--- [ImageStreamOutput] Successfully sent output for {prompt_id}/{node_id} ---")
+            except requests.exceptions.RequestException as e:
+                # Log the error and re-raise to make the node fail in ComfyUI
+                error_message = f"Failed to send image to callback URL '{callback_url}': {e}"
+                print(f"--- [ImageStreamOutput] ERROR: {error_message} ---")
+                raise Exception(error_message) from e
+        
+        return {} # Output nodes must return a dictionary.
+
 @app.get("/")
 async def root():
     return {"status": "ok"}
@@ -213,7 +270,9 @@ start_server()
 # Required for ComfyUI to recognize this file as a custom node
 NODE_CLASS_MAPPINGS = {
     "ImageStreamInput": ImageStreamInput,
+    "ImageStreamOutput": ImageStreamOutput,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "Nilor ImageStreamInput": "👺 Image Stream Input",
-} 
+    "ImageStreamInput": "👺 Image Stream Input",
+    "ImageStreamOutput": "👺 Image Stream Output",
+}
