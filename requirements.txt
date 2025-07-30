@@ -4,3 +4,4 @@ fastapi
 uvicorn
 python-multipart
 aiofiles
+boto3
