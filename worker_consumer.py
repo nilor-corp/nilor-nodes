@@ -5,7 +5,7 @@ import time
 import logging
 
 # --- Configuration ---
-# These should eventually come from environment variables passed to the worker's container.
+# TODO: these config params should eventually come from environment variables.
 SQS_ENDPOINT_URL = "http://localhost:9324"
 SQS_QUEUE_NAME = "jobs_to_process"
 AWS_REGION = "us-east-1"

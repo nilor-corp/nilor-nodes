@@ -156,6 +156,6 @@ NODE_CLASS_MAPPINGS = {
 
 # A dictionary that contains the friendly/humanly readable titles for the nodes
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "MediaStreamInput": "Media Stream Input (URL)",
-    "MediaStreamOutput": "Media Stream Output (URL)",
+    "MediaStreamInput": "👺 Media Stream Input (URL)",
+    "MediaStreamOutput": "👺 Media Stream Output (URL)",
 }
