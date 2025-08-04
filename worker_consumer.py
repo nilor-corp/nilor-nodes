@@ -3,15 +3,33 @@ import boto3
 import json
 import time
 import logging
+import requests
+import os
 
 # --- Configuration ---
-# TODO: these config params should eventually come from environment variables.
-SQS_ENDPOINT_URL = "http://localhost:9324"
-SQS_QUEUE_NAME = "jobs_to_process"
-AWS_REGION = "us-east-1"
+# Use environment variables with sensible defaults for Docker and local testing.
+SQS_ENDPOINT_URL = os.getenv("SQS_ENDPOINT_URL", "http://localhost:9324")
+SQS_QUEUE_NAME = os.getenv("SQS_QUEUE_NAME", "jobs_to_process")
+AWS_REGION = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
+COMFYUI_URL = os.getenv("COMFYUI_URL", "http://127.0.0.1:8188") + "/prompt"
 
 # --- Basic Logging Setup ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+def submit_to_local_comfyui(payload: dict) -> bool:
+    """
+    Sends the job payload to the local ComfyUI /prompt endpoint.
+    """
+    try:
+        logging.info(f"Submitting job to local ComfyUI at {COMFYUI_URL}")
+        # The payload from the Brain API is now the complete, ready-to-run prompt.
+        response = requests.post(COMFYUI_URL, json=payload, timeout=20)
+        response.raise_for_status()
+        logging.info(f"Successfully submitted job to local ComfyUI. Response: {response.json()}")
+        return True
+    except requests.RequestException as e:
+        logging.error(f"Failed to POST job to local ComfyUI: {e}")
+        return False
 
 def consume_jobs():
     """
@@ -55,20 +73,21 @@ def consume_jobs():
                 message = response['Messages'][0]
                 receipt_handle = message['ReceiptHandle']
                 
-                # --- PROOF OF CONCEPT PROCESSING ---
-                # In this initial version, we just print the message body.
-                # In the future, this is where it will be submitted to the local ComfyUI.
-                logging.info(f"Received message. Body: {message['Body']}")
+                logging.info(f"Received job. Body: {message['Body']}")
+                workflow_payload = json.loads(message['Body'])
+                # 4. Submit the job to the local ComfyUI server. The 'prompt' field within the body is the actual workflow.
+                submit_successful = submit_to_local_comfyui(workflow_payload['prompt'])
                 
-                # 4. Delete the message from the queue to prevent it from being re-processed.
-                #    This is a critical step.
-                sqs_client.delete_message(
-                    QueueUrl=queue_url,
-                    ReceiptHandle=receipt_handle
-                )
-                logging.info("Message processed and deleted from queue.")
+                if submit_successful:
+                    sqs_client.delete_message(
+                        QueueUrl=queue_url,
+                        ReceiptHandle=receipt_handle
+                    )
+                    logging.info("Message processed and deleted from queue.")
+                else:
+                    logging.warning("Local submission failed. Message will be retried after visibility timeout.")
+
             else:
-                # This is not an error, just an empty response from long polling.
                 logging.info("No messages received. Polling again...")
 
         except Exception as e:
