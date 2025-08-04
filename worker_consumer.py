@@ -22,7 +22,7 @@ def submit_to_local_comfyui(payload: dict) -> bool:
     """
     try:
         logging.info(f"Submitting job to local ComfyUI at {COMFYUI_URL}")
-        # The payload from the Brain API is now the complete, ready-to-run prompt.
+        # The payload from the Brain API is the complete, ready-to-run object.
         response = requests.post(COMFYUI_URL, json=payload, timeout=20)
         response.raise_for_status()
         logging.info(f"Successfully submitted job to local ComfyUI. Response: {response.json()}")
@@ -75,8 +75,9 @@ def consume_jobs():
                 
                 logging.info(f"Received job. Body: {message['Body']}")
                 workflow_payload = json.loads(message['Body'])
-                # 4. Submit the job to the local ComfyUI server. The 'prompt' field within the body is the actual workflow.
-                submit_successful = submit_to_local_comfyui(workflow_payload['prompt'])
+                
+                # THE FIX: Pass the entire payload, not just the 'prompt' field, to the ComfyUI server.
+                submit_successful = submit_to_local_comfyui(workflow_payload)
                 
                 if submit_successful:
                     sqs_client.delete_message(
