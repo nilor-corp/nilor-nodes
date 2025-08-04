@@ -130,6 +130,10 @@ class MediaStreamOutput:
                     "multiline": True,
                     "default": "http://example.com/webhook"
                 }),
+                "output_object_keys": ("STRING", {
+                    "multiline": False,
+                    "default": ""
+                }),
             },
             "hidden": {"prompt": "PROMPT", "extra_pnginfo": "EXTRA_PNGINFO"},
         }
@@ -139,17 +143,24 @@ class MediaStreamOutput:
     OUTPUT_NODE = True
     CATEGORY = category + subcategories["streaming"]
 
-    def upload(self, images, format, presigned_upload_url, completion_webhook_url, prompt=None, extra_pnginfo=None):
+    def upload(self, images, format, presigned_upload_url, completion_webhook_url, output_object_keys, prompt=None, extra_pnginfo=None):
         if format == "png":
             # For "png", we upload the first image of the batch
             self._upload_image(images[0], presigned_upload_url)
         elif format == "mp4":
             self._upload_video(images, presigned_upload_url)
         
-        # The webhook call will be fully implemented in a later goal (Minor Goal 4.1)
-        # For now, just log it.
-        logging.info(f"Completion webhook (not sent): {completion_webhook_url}")
-
+        # After all uploads are complete, prepare the webhook payload.
+        webhook_payload = {"output_files": [output_object_keys]}
+        
+        # Send the final completion webhook POST request.
+        try:
+            logging.info(f"Sending completion webhook to: {completion_webhook_url}")
+            requests.post(completion_webhook_url, json=webhook_payload, timeout=30)
+        except requests.RequestException as e:
+            # If the webhook fails, the job will eventually be marked 'lost' by the reconciler.
+            logging.error(f"Failed to send completion webhook: {e}")
+            
         return {"ui": {"images": []}}
 
     def _upload_image(self, image_tensor, url):
