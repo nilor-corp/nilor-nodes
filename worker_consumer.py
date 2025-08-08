@@ -1,102 +1,128 @@
-# Imports:
-import boto3
-import json
-import time
-import logging
-import requests
+"""
+Worker Consumer Service for ComfyUI
+
+This script runs as a continuous background service on each ComfyUI worker.
+Its purpose is to poll the `jobs_to_process` SQS queue for new jobs,
+submit them to the local ComfyUI server, and manage the message lifecycle.
+"""
 import os
+import json
+import logging
+import time
+import requests
+import boto3
+from dotenv import load_dotenv
+
+# --- Load Environment Variables ---
+# Load from the .env file in the same directory
+current_dir = os.path.dirname(os.path.abspath(__file__))
+dotenv_path = os.path.join(current_dir, '.env')
+if os.path.exists(dotenv_path):
+    load_dotenv(dotenv_path=dotenv_path)
+    logging.info(f"Loaded environment variables from {dotenv_path}")
+else:
+    logging.info("No .env file found, relying on shell environment variables.")
+
 
 # --- Configuration ---
-# Use environment variables with sensible defaults for Docker and local testing.
 SQS_ENDPOINT_URL = os.getenv("SQS_ENDPOINT_URL", "http://localhost:9324")
-SQS_QUEUE_NAME = os.getenv("SQS_QUEUE_NAME", "jobs_to_process")
-AWS_REGION = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
-COMFYUI_URL = os.getenv("COMFYUI_URL", "http://127.0.0.1:8188") + "/prompt"
+SQS_QUEUE_NAME = os.getenv("SQS_JOBS_TO_PROCESS_QUEUE_NAME", "jobs_to_process")
+COMFYUI_API_URL = os.getenv("COMFYUI_API_URL", "http://127.0.0.1:8188") + "/prompt"
+AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID", "local")
+AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY", "local")
+AWS_DEFAULT_REGION = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
+POLL_WAIT_TIME_SECONDS = 20 # SQS Long Polling
+MAX_MESSAGES = 1
 
-# --- Basic Logging Setup ---
+# --- Setup Logging ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-def submit_to_local_comfyui(payload: dict) -> bool:
-    """
-    Sends the job payload to the local ComfyUI /prompt endpoint.
-    """
-    try:
-        logging.info(f"Submitting job to local ComfyUI at {COMFYUI_URL}")
-        # The payload from the Brain API is the complete, ready-to-run object.
-        response = requests.post(COMFYUI_URL, json=payload, timeout=20)
-        response.raise_for_status()
-        logging.info(f"Successfully submitted job to local ComfyUI. Response: {response.json()}")
-        return True
-    except requests.RequestException as e:
-        logging.error(f"Failed to POST job to local ComfyUI: {e}")
-        return False
-
-def consume_jobs():
-    """
-    Connects to ElasticMQ and enters a loop to poll for, process, and delete messages.
-    """
-    logging.info(f"Worker Consumer starting up. Connecting to SQS at {SQS_ENDPOINT_URL}...")
-    
-    # 1. Create an SQS client pointing to the local ElasticMQ instance.
-    try:
-        sqs_client = boto3.client(
+class WorkerConsumer:
+    def __init__(self):
+        self.sqs_client = boto3.client(
             'sqs',
             endpoint_url=SQS_ENDPOINT_URL,
-            region_name=AWS_REGION,
-            aws_access_key_id='x', # Dummy credentials for local dev
-            aws_secret_access_key='x'
+            aws_access_key_id=AWS_ACCESS_KEY_ID,
+            aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+            region_name=AWS_DEFAULT_REGION
         )
-        
-        # Get the full queue URL from its name.
-        response = sqs_client.get_queue_url(QueueName=SQS_QUEUE_NAME)
-        queue_url = response['QueueUrl']
-        logging.info(f"Successfully connected to queue: {queue_url}")
-    except Exception as e:
-        logging.error(f"Could not connect to SQS queue. Exiting. Error: {e}")
-        return
+        self.queue_url = self._get_queue_url()
 
-    # 2. Start the main consumer loop.
-    logging.info("Starting to poll for messages...")
-    while True:
+    def _get_queue_url(self):
+        """Retrieves the SQS queue URL."""
         try:
-            # 3. Long-poll for messages. This is more efficient than rapid, short polling.
-            #    WaitTimeSeconds tells SQS to hold the connection open for up to 20 seconds
-            #    if no messages are available.
-            response = sqs_client.receive_message(
-                QueueUrl=queue_url,
-                MaxNumberOfMessages=1,
-                WaitTimeSeconds=20 
-            )
+            response = self.sqs_client.get_queue_url(QueueName=SQS_QUEUE_NAME)
+            logging.info(f"Successfully retrieved queue URL for '{SQS_QUEUE_NAME}'")
+            return response['QueueUrl']
+        except self.sqs_client.exceptions.QueueDoesNotExist:
+            logging.error(f"Queue '{SQS_QUEUE_NAME}' does not exist. Please ensure it's created.")
+            raise
 
-            # Check if the 'Messages' key exists and if it's not empty.
-            if 'Messages' in response and len(response['Messages']) > 0:
-                message = response['Messages'][0]
-                receipt_handle = message['ReceiptHandle']
-                
-                logging.info(f"Received job. Body: {message['Body']}")
-                workflow_payload = json.loads(message['Body'])
-                
-                # THE FIX: Pass the entire payload, not just the 'prompt' field, to the ComfyUI server.
-                submit_successful = submit_to_local_comfyui(workflow_payload)
-                
-                if submit_successful:
-                    sqs_client.delete_message(
-                        QueueUrl=queue_url,
-                        ReceiptHandle=receipt_handle
-                    )
-                    logging.info("Message processed and deleted from queue.")
-                else:
-                    logging.warning("Local submission failed. Message will be retried after visibility timeout.")
+    def consume_loop(self):
+        """The main loop to continuously poll for and process messages."""
+        logging.info(f"Starting worker consumer. Polling queue: {self.queue_url}")
+        while True:
+            try:
+                logging.debug(f"Waiting for messages (long poll for {POLL_WAIT_TIME_SECONDS}s)...")
+                response = self.sqs_client.receive_message(
+                    QueueUrl=self.queue_url,
+                    MaxNumberOfMessages=MAX_MESSAGES,
+                    WaitTimeSeconds=POLL_WAIT_TIME_SECONDS
+                )
 
+                messages = response.get('Messages', [])
+                if not messages:
+                    continue # Go back to polling
+
+                for message in messages:
+                    self.process_message(message)
+
+            except Exception as e:
+                logging.error(f"An unexpected error occurred in the consumer loop: {e}", exc_info=True)
+                time.sleep(10) # Wait before retrying to avoid spamming logs
+
+    def process_message(self, message):
+        """Processes a single message from the queue."""
+        receipt_handle = message['ReceiptHandle']
+        try:
+            logging.info(f"Received message: {message['MessageId']}")
+            workflow_payload = json.loads(message['Body'])
+            
+            # The actual job data is nested under 'Message' if it comes from SNS,
+            # but directly in the body if sent directly to SQS. We'll handle both.
+            if 'Message' in workflow_payload:
+                workflow_data = json.loads(workflow_payload['Message'])
             else:
-                logging.info("No messages received. Polling again...")
+                workflow_data = workflow_payload
+            
+            logging.info(f"Submitting job to local ComfyUI server at {COMFYUI_API_URL}")
+            response = requests.post(COMFYUI_API_URL, json=workflow_data, timeout=30)
+            response.raise_for_status() # Raise an exception for bad status codes (4xx or 5xx)
 
+            logging.info(f"Successfully submitted job to ComfyUI. Prompt ID: {response.json().get('prompt_id')}")
+            
+            # If submission is successful, delete the message from the queue
+            self.sqs_client.delete_message(
+                QueueUrl=self.queue_url,
+                ReceiptHandle=receipt_handle
+            )
+            logging.info(f"Deleted message {message['MessageId']} from the queue.")
+
+        except requests.exceptions.RequestException as e:
+            logging.error(f"Failed to submit job to ComfyUI: {e}. Message will be retried after visibility timeout.")
+            # Do NOT delete the message, let it become visible again for retry
+        except (json.JSONDecodeError, KeyError) as e:
+            logging.error(f"Failed to parse message body: {e}. Discarding malformed message.")
+            # Delete the malformed message to prevent poison pill
+            self.sqs_client.delete_message(
+                QueueUrl=self.queue_url,
+                ReceiptHandle=receipt_handle
+            )
         except Exception as e:
-            logging.error(f"An error occurred in the consumer loop: {e}")
-            # Wait for a moment before retrying to avoid spamming logs on a persistent error.
-            time.sleep(10)
+            logging.error(f"An unexpected error occurred while processing message: {e}. It will be retried.", exc_info=True)
+            # Do NOT delete the message, let it retry
 
-# This allows the script to be run directly for testing,
-# but prevents it from running automatically when imported as a module.
-if __name__ == "__main__":
-    consume_jobs()
+def consume_jobs():
+    """Entry point function to be called in a background thread."""
+    consumer = WorkerConsumer()
+    consumer.consume_loop()
