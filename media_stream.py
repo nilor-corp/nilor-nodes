@@ -6,9 +6,22 @@ import io
 import logging
 import imageio.v2 as imageio
 import mimetypes
+import boto3
+import os
+import json
+from dotenv import load_dotenv
+
+# --- Load Environment Variables ---
+# Get the directory of the current script
+current_dir = os.path.dirname(os.path.abspath(__file__))
+# Construct the path to the .env file
+dotenv_path = os.path.join(current_dir, '.env')
+# Load the .env file
+load_dotenv(dotenv_path=dotenv_path)
 
 # --- Setup Logging ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
 # --- Node Categories ---
 category = "Nilor Nodes 👺"
 subcategories = {
@@ -114,7 +127,7 @@ class MediaStreamInput:
         return (video_tensor, mask_tensor)
 
 
-# --- MediaStreamOutput: Universal Media Uploader ---
+# --- MediaStreamOutput: Universal Media Uploader & SQS Notifier ---
 class MediaStreamOutput:
     @classmethod
     def INPUT_TYPES(s):
@@ -122,13 +135,14 @@ class MediaStreamOutput:
             "required": {
                 "images": ("IMAGE",),
                 "format": (["png", "mp4"],),
+                "job_id": ("STRING", {"default": "", "multiline": False}),
                 "presigned_upload_url": ("STRING", {
                     "multiline": True,
                     "default": "http://example.com/upload_here"
                 }),
-                "completion_webhook_url": ("STRING", {
+                "job_completions_queue_url": ("STRING", {
                     "multiline": True,
-                    "default": "http://example.com/webhook"
+                    "default": "http://localhost:9324/queue/job_completions"
                 }),
                 "output_object_keys": ("STRING", {
                     "multiline": False,
@@ -139,27 +153,46 @@ class MediaStreamOutput:
         }
 
     RETURN_TYPES = ()
-    FUNCTION = "upload"
+    FUNCTION = "upload_and_notify"
     OUTPUT_NODE = True
     CATEGORY = category + subcategories["streaming"]
 
-    def upload(self, images, format, presigned_upload_url, completion_webhook_url, output_object_keys, prompt=None, extra_pnginfo=None):
+
+
+    def upload_and_notify(self, images, format, job_id, presigned_upload_url, job_completions_queue_url, output_object_keys, prompt=None, extra_pnginfo=None):
+        if not job_id:
+            raise ValueError("job_id is a required input for MediaStreamOutput.")
+
         if format == "png":
-            # For "png", we upload the first image of the batch
             self._upload_image(images[0], presigned_upload_url)
         elif format == "mp4":
             self._upload_video(images, presigned_upload_url)
         
-        # After all uploads are complete, prepare the webhook payload.
-        webhook_payload = {"output_files": [output_object_keys]}
+        # After upload, send a completion message to the SQS queue.
+        completion_message = {
+            "job_id": job_id,
+            "status": "completed",
+            "output_files": [output_object_keys] # Must be a list of strings
+        }
         
-        # Send the final completion webhook POST request.
         try:
-            logging.info(f"Sending completion webhook to: {completion_webhook_url}")
-            requests.post(completion_webhook_url, json=webhook_payload, timeout=30)
-        except requests.RequestException as e:
-            # If the webhook fails, the job will eventually be marked 'lost' by the reconciler.
-            logging.error(f"Failed to send completion webhook: {e}")
+            # Re-initialize the client inside the execution to ensure it picks up env vars correctly.
+            sqs_client = boto3.client(
+                'sqs',
+                endpoint_url=os.getenv("SQS_ENDPOINT_URL"),
+                aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID", "local"),
+                aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY", "local"),
+                region_name=os.getenv("AWS_DEFAULT_REGION", "us-east-1")
+            )
+            logging.info(f"Sending completion message for job {job_id} to queue: {job_completions_queue_url}")
+            sqs_client.send_message(
+                QueueUrl=job_completions_queue_url,
+                MessageBody=json.dumps(completion_message)
+            )
+            logging.info("Completion message sent successfully.")
+        except Exception as e:
+            logging.error(f"Failed to send completion message to SQS: {e}")
+            raise # Re-raise to fail the ComfyUI job
             
         return {"ui": {"images": []}}
 
@@ -183,7 +216,6 @@ class MediaStreamOutput:
             frames.append(frame)
 
         buffer = io.BytesIO()
-        # Use mimwrite for format-agnostic writing, though we specify mp4 here
         imageio.mimwrite(buffer, frames, format='mp4', fps=30, quality=8)
         buffer.seek(0)
 
@@ -198,7 +230,7 @@ class MediaStreamOutput:
             logging.info("Upload successful.")
         except requests.RequestException as e:
             logging.error(f"MediaStreamOutput: Failed to upload media: {e}")
-            raise # Re-raise the exception to make ComfyUI aware of the failure
+            raise
         except Exception as e:
             logging.error(f"MediaStreamOutput: Failed to process and upload media: {e}")
             raise

@@ -7,3 +7,4 @@ aiofiles
 boto3
 imageio
 imageio-ffmpeg
+python-dotenv
