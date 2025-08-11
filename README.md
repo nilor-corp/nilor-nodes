@@ -189,3 +189,30 @@ Uploads video files to a HuggingFace dataset.
 
 **Notes**: Handles batch upload of multiple video files.
 </details>
+
+## 📡 Core Nilor Services
+
+<details>
+<summary><b>Worker Consumer Service</b></summary>
+
+The `worker_consumer.py` script is a background service that runs on each ComfyUI worker. It is responsible for pulling jobs from the central ElasticMQ `jobs_to_process` queue and submitting them to its local ComfyUI instance for processing. This service is essential for the distributed architecture of the system.
+
+**Key Responsibilities:**
+-   Continuously polls the `jobs_to_process` queue for new jobs using long polling.
+-   When a job is received, it extracts the workflow data and submits it to the local ComfyUI server.
+-   Deletes the job message from the queue upon successful submission to prevent reprocessing.
+-   If submission fails, the message remains on the queue to be picked up by another worker.
+
+</details>
+
+<details>
+<summary><b>Environment Variables</b></summary>
+
+The `nilor-nodes` require a `.env` file to be present in the `ComfyUI` directory to configure the connection to the core services (MinIO, ElasticMQ, and the Brain API). To set it up, create a file named `.env` in the root of your `ComfyUI` directory by copying the `.env.example` template.
+
+**Instructions:**
+1.  Create a new file named `.env` in the `ComfyUI` directory.
+2.  Copy the contents of the `.env.example` file into your new `.env` file.
+3.  Replace the placeholder values with your actual credentials and endpoint URLs for your local or production environment.
+
+</details>
