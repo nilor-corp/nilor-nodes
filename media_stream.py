@@ -40,6 +40,7 @@ class MediaStreamInput:
     def INPUT_TYPES(s):
         return {
             "required": {
+                "input_name": ("STRING", {"default": "default_input", "multiline": False}),
                 "presigned_download_url": ("STRING", {
                     "multiline": True, 
                     "default": "http://example.com/image.png"
@@ -52,8 +53,8 @@ class MediaStreamInput:
     FUNCTION = "download"
     CATEGORY = category + subcategories["streaming"]
 
-    def download(self, presigned_download_url: str):
-        logging.info(f"MediaStreamInput: Downloading from {presigned_download_url}")
+    def download(self, presigned_download_url: str, input_name: str = "default_input"):
+        logging.info(f"MediaStreamInput: Downloading from {presigned_download_url} for input '{input_name}'")
         try:
             response = requests.get(presigned_download_url, timeout=180)
             response.raise_for_status()
@@ -133,6 +134,7 @@ class MediaStreamOutput:
     def INPUT_TYPES(s):
         return {
             "required": {
+                "output_name": ("STRING", {"default": "default_output", "multiline": False}),
                 "images": ("IMAGE",),
                 "format": (["png", "mp4"],),
                 "job_id": ("STRING", {"default": "", "multiline": False}),
@@ -159,20 +161,32 @@ class MediaStreamOutput:
 
 
 
-    def upload_and_notify(self, images, format, job_id, presigned_upload_url, job_completions_queue_url, output_object_keys, prompt=None, extra_pnginfo=None):
+    def upload_and_notify(self, images, format, job_id, presigned_upload_url, job_completions_queue_url, output_object_keys, output_name: str="default_output", prompt=None, extra_pnginfo=None):
         if not job_id:
             raise ValueError("job_id is a required input for MediaStreamOutput.")
 
+        # The `output_object_keys` is received as a string representation of a dictionary.
+        # We must parse it back into a dictionary.
+        final_outputs_dict = {}
+        try:
+            # The string may use single quotes, so we replace them for valid JSON.
+            final_outputs_dict = json.loads(output_object_keys.replace("'", '"'))
+        except Exception as e:
+            logging.error(f"FATAL: Could not parse output_object_keys from string: {output_object_keys}. Error: {e}")
+            final_outputs_dict = {} # Send empty dict on failure.
+        
+        # The presigned_upload_url provided to this node is specific to its output_name.
+        # We don't need to re-select it. We just need to perform the upload.
         if format == "png":
             self._upload_image(images[0], presigned_upload_url)
         elif format == "mp4":
             self._upload_video(images, presigned_upload_url)
         
-        # After upload, send a completion message to the SQS queue.
+        # After upload, send the full, parsed dictionary of outputs to the SQS queue.
         completion_message = {
             "job_id": job_id,
             "status": "completed",
-            "output_files": [output_object_keys] # Must be a list of strings
+            "outputs": final_outputs_dict
         }
         
         try:
