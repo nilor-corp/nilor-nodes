@@ -41,6 +41,7 @@ class MediaStreamInput:
         return {
             "required": {
                 "input_name": ("STRING", {"default": "default_input", "multiline": False}),
+                "format": (["auto", "image", "video"],),
             },
             "hidden": {
                 "presigned_download_url": ("STRING", {
@@ -55,20 +56,26 @@ class MediaStreamInput:
     FUNCTION = "download"
     CATEGORY = category + subcategories["streaming"]
 
-    def download(self, presigned_download_url: str, input_name: str = "default_input"):
-        logging.info(f"MediaStreamInput: Downloading from {presigned_download_url} for input '{input_name}'")
+    def download(self, presigned_download_url: str, format: str, input_name: str = "default_input"):
+        logging.info(f"MediaStreamInput: Downloading from {presigned_download_url} for input '{input_name}' with format '{format}'")
         try:
             response = requests.get(presigned_download_url, timeout=180)
             response.raise_for_status()
             media_bytes = response.content
             
-            # Use the Content-Type header to determine the file type
-            content_type = response.headers.get("Content-Type", "")
-            logging.info(f"Detected Content-Type: {content_type}")
+            # Determine processing method
+            if format == 'auto':
+                # Use the Content-Type header to determine the file type
+                content_type = response.headers.get("Content-Type", "")
+                logging.info(f"Detected Content-Type: {content_type}")
 
-            if 'video' in content_type:
+                if 'video' in content_type:
+                    return self._process_video(media_bytes)
+                else: # Default to image processing
+                    return self._process_image(media_bytes)
+            elif format == 'video':
                 return self._process_video(media_bytes)
-            else: # Default to image processing
+            else: # format == 'image'
                 return self._process_image(media_bytes)
 
         except requests.RequestException as e:
