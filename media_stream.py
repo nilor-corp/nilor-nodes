@@ -42,12 +42,12 @@ class MediaStreamInput:
             "required": {
                 "input_name": ("STRING", {"default": "default_input", "multiline": False}),
                 "format": (["auto", "image", "video"],),
-            },
-            "hidden": {
                 "presigned_download_url": ("STRING", {
-                    "multiline": True, 
+                    "multiline": True,
                     "default": "http://example.com/image.png"
                 }),
+            },
+            "hidden": {
             },
         }
 
@@ -146,10 +146,6 @@ class MediaStreamOutput:
                 "output_name": ("STRING", {"default": "default_output", "multiline": False}),
                 "images": ("IMAGE",),
                 "format": (["png", "mp4"],),
-            },
-            "hidden": {
-                "prompt": "PROMPT", 
-                "extra_pnginfo": "EXTRA_PNGINFO",
                 "job_id": ("STRING", {"default": "", "multiline": False}),
                 "presigned_upload_url": ("STRING", {
                     "multiline": True,
@@ -163,6 +159,10 @@ class MediaStreamOutput:
                     "multiline": False,
                     "default": ""
                 }),
+            },
+            "hidden": {
+                "prompt": "PROMPT",
+                "extra_pnginfo": "EXTRA_PNGINFO",
             },
         }
 
