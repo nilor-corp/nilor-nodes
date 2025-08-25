@@ -44,7 +44,7 @@ class MediaStreamInput:
                 "format": (["auto", "image", "video"],),
                 "presigned_download_url": ("STRING", {
                     "multiline": True,
-                    "default": "http://example.com/image.png"
+                    "default": "<auto-filled by system>"
                 }),
             },
             "hidden": {
@@ -146,18 +146,18 @@ class MediaStreamOutput:
                 "output_name": ("STRING", {"default": "default_output", "multiline": False}),
                 "images": ("IMAGE",),
                 "format": (["png", "mp4"],),
-                "job_id": ("STRING", {"default": "", "multiline": False}),
+                "job_id": ("STRING", {"default": "<auto-filled by system>", "multiline": False}),
                 "presigned_upload_url": ("STRING", {
                     "multiline": True,
-                    "default": "http://example.com/upload_here"
+                    "default": "<auto-filled by system>"
                 }),
                 "job_completions_queue_url": ("STRING", {
                     "multiline": True,
-                    "default": "http://localhost:9324/queue/job_completions"
+                    "default": "<auto-filled by system>"
                 }),
                 "output_object_keys": ("STRING", {
                     "multiline": False,
-                    "default": ""
+                    "default": "<auto-filled by system>"
                 }),
             },
             "hidden": {
