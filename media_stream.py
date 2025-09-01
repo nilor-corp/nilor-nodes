@@ -41,7 +41,7 @@ class MediaStreamInput:
         return {
             "required": {
                 "input_name": ("STRING", {"default": "default_input", "multiline": False}),
-                "format": (["auto", "image", "video"],),
+                "format": (["auto", "image", "video", "image_batch"],),
                 "presigned_download_url": ("STRING", {
                     "multiline": True,
                     "default": "<auto-filled by system>"
@@ -75,6 +75,8 @@ class MediaStreamInput:
                     return self._process_image(media_bytes)
             elif format == 'video':
                 return self._process_video(media_bytes)
+            elif format == 'image_batch':
+                return self._process_video(media_bytes) # Treat as video for processing
             else: # format == 'image'
                 return self._process_image(media_bytes)
 
