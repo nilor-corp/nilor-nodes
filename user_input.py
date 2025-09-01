@@ -54,14 +54,33 @@ class NilorUserInput_Float:
     def get_value(self, input_name, value):
         return (value,)
 
+class NilorUserInput_Boolean:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "input_name": ("STRING", {"default": "my_bool_input", "multiline": False}),
+                "value": ("BOOLEAN", {"default": False}),
+            }
+        }
+    RETURN_TYPES = ("BOOLEAN",)
+    RETURN_NAMES = ("boolean",)
+    FUNCTION = "get_value"
+    CATEGORY = category + subcategories["io"]
+
+    def get_value(self, input_name, value):
+        return (value,)
+
 NODE_CLASS_MAPPINGS = {
     "NilorUserInput_String": NilorUserInput_String,
     "NilorUserInput_Int": NilorUserInput_Int,
     "NilorUserInput_Float": NilorUserInput_Float,
+    "NilorUserInput_Boolean": NilorUserInput_Boolean,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "NilorUserInput_String": "👺 User Input (String)",
     "NilorUserInput_Int": "👺 User Input (Int)",
     "NilorUserInput_Float": "👺 User Input (Float)",
+    "NilorUserInput_Boolean": "👺 User Input (Boolean)",
 }
