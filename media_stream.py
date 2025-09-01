@@ -162,6 +162,7 @@ class MediaStreamOutput:
                 "output_name": ("STRING", {"default": "default_output", "multiline": False}),
                 "images": ("IMAGE",),
                 "format": (["png", "mp4"],),
+                "framerate": ("INT", {"default": 24, "min": 1, "max": 240, "step": 1}),
                 "job_id": ("STRING", {"default": "<auto-filled by system>", "multiline": False}),
                 "presigned_upload_url": ("STRING", {
                     "multiline": True,
@@ -189,7 +190,7 @@ class MediaStreamOutput:
 
 
 
-    def upload_and_notify(self, images, format, job_id, presigned_upload_url, job_completions_queue_url, output_object_keys, output_name: str="default_output", prompt=None, extra_pnginfo=None):
+    def upload_and_notify(self, images, format, job_id, presigned_upload_url, job_completions_queue_url, output_object_keys, framerate, output_name: str="default_output", prompt=None, extra_pnginfo=None):
         if not job_id:
             raise ValueError("job_id is a required input for MediaStreamOutput.")
 
@@ -208,7 +209,7 @@ class MediaStreamOutput:
         if format == "png":
             self._upload_image(images[0], presigned_upload_url)
         elif format == "mp4":
-            self._upload_video(images, presigned_upload_url)
+            self._upload_video(images, presigned_upload_url, framerate)
         
         # After upload, send the full, parsed dictionary of outputs to the SQS queue.
         completion_message = {
@@ -249,7 +250,7 @@ class MediaStreamOutput:
         
         self._perform_upload(buffer, url, 'image/png')
 
-    def _upload_video(self, image_batch_tensor, url):
+    def _upload_video(self, image_batch_tensor, url, framerate):
         logging.info(f"Uploading as MP4 video. Frame count: {len(image_batch_tensor)}")
         frames = []
         for image_tensor in image_batch_tensor:
@@ -258,7 +259,7 @@ class MediaStreamOutput:
             frames.append(frame)
 
         buffer = io.BytesIO()
-        imageio.mimwrite(buffer, frames, format='mp4', fps=30, quality=8)
+        imageio.mimwrite(buffer, frames, format='mp4', fps=framerate, quality=8)
         buffer.seek(0)
 
         self._perform_upload(buffer, url, 'video/mp4')
