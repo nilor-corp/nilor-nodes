@@ -41,7 +41,7 @@ class MediaStreamInput:
         return {
             "required": {
                 "input_name": ("STRING", {"default": "default_input", "multiline": False}),
-                "format": (["auto", "image", "video", "image_batch"],),
+                "format": (["image", "image_batch", "video"],),
                 "presigned_download_url": ("STRING", {
                     "multiline": True,
                     "default": "<auto-filled by system>"
@@ -59,26 +59,42 @@ class MediaStreamInput:
     def download(self, presigned_download_url: str, format: str, input_name: str = "default_input"):
         logging.info(f"MediaStreamInput: Downloading from {presigned_download_url} for input '{input_name}' with format '{format}'")
         try:
+            # Two-phase download for batches: manifest first, then assets
+            if format == 'image_batch':
+                manifest_response = requests.get(presigned_download_url, timeout=60)
+                manifest_response.raise_for_status()
+                manifest = manifest_response.json()
+                
+                logging.info(f"Processing manifest for '{manifest.get('input_name')}' with {len(manifest.get('files', []))} assets.")
+                
+                # Sort files by sequence number to ensure correct order
+                sorted_files = sorted(manifest.get('files', []), key=lambda x: x.get('sequence', 0))
+                
+                # Download all assets in parallel
+                asset_responses = []
+                for file_info in sorted_files:
+                    try:
+                        resp = requests.get(file_info['presigned_url'], timeout=180)
+                        resp.raise_for_status()
+                        asset_responses.append(resp.content)
+                    except requests.RequestException as e:
+                        logging.error(f"Failed to download asset {file_info.get('filename')}: {e}")
+                        raise  # Re-raise to fail the entire process
+                
+                return self._process_image_batch(asset_responses)
+
+            # --- Single-file download ---
             response = requests.get(presigned_download_url, timeout=180)
             response.raise_for_status()
             media_bytes = response.content
             
-            # Determine processing method
-            if format == 'auto':
-                # Use the Content-Type header to determine the file type
-                content_type = response.headers.get("Content-Type", "")
-                logging.info(f"Detected Content-Type: {content_type}")
-
-                if 'video' in content_type:
-                    return self._process_video(media_bytes)
-                else: # Default to image processing
-                    return self._process_image(media_bytes)
-            elif format == 'video':
+            if format == 'video':
                 return self._process_video(media_bytes)
-            elif format == 'image_batch':
-                return self._process_video(media_bytes) # Treat as video for processing
-            else: # format == 'image'
+            elif format == 'image':
                 return self._process_image(media_bytes)
+            else:
+                # Should not happen if UI choices are respected
+                raise ValueError(f"Unsupported format '{format}' for single media download.")
 
         except requests.RequestException as e:
             logging.error(f"MediaStreamInput: Failed to download file: {e}")
@@ -86,6 +102,32 @@ class MediaStreamInput:
         except Exception as e:
             logging.error(f"MediaStreamInput: Failed to process media: {e}")
             return (None, None)
+
+    def _process_image_batch(self, image_bytes_list):
+        logging.info(f"Processing image batch with {len(image_bytes_list)} images...")
+        output_images = []
+        output_masks = []
+
+        for image_bytes in image_bytes_list:
+            image_pil = Image.open(io.BytesIO(image_bytes))
+            
+            rgb_image_pil = image_pil.convert("RGB")
+            image_tensor = torch.from_numpy(np.array(rgb_image_pil).astype(np.float32) / 255.0).unsqueeze(0)
+            
+            if 'A' in image_pil.getbands():
+                mask = torch.from_numpy(np.array(image_pil.getchannel('A')).astype(np.float32) / 255.0).unsqueeze(0)
+            else:
+                mask = torch.zeros((1, image_pil.height, image_pil.width), dtype=torch.float32, device="cpu")
+            
+            output_images.append(image_tensor)
+            output_masks.append(mask)
+        
+        # Concatenate along the batch dimension (dim=0)
+        images_tensor = torch.cat(output_images, dim=0)
+        masks_tensor = torch.cat(output_masks, dim=0)
+        
+        logging.info(f"Image batch processing successful. Batch shape: {images_tensor.shape}")
+        return (images_tensor, masks_tensor)
 
     def _process_image(self, image_bytes):
         logging.info("Processing as image...")
