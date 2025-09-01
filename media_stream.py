@@ -51,8 +51,8 @@ class MediaStreamInput:
             },
         }
 
-    RETURN_TYPES = ("IMAGE", "MASK")
-    RETURN_NAMES = ("image", "mask")
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("image",)
     FUNCTION = "download"
     CATEGORY = category + subcategories["streaming"]
 
@@ -98,15 +98,14 @@ class MediaStreamInput:
 
         except requests.RequestException as e:
             logging.error(f"MediaStreamInput: Failed to download file: {e}")
-            return (None, None)
+            return (None,)
         except Exception as e:
             logging.error(f"MediaStreamInput: Failed to process media: {e}")
-            return (None, None)
+            return (None,)
 
     def _process_image_batch(self, image_bytes_list):
         logging.info(f"Processing image batch with {len(image_bytes_list)} images...")
         output_images = []
-        output_masks = []
 
         for image_bytes in image_bytes_list:
             image_pil = Image.open(io.BytesIO(image_bytes))
@@ -114,47 +113,24 @@ class MediaStreamInput:
             rgb_image_pil = image_pil.convert("RGB")
             image_tensor = torch.from_numpy(np.array(rgb_image_pil).astype(np.float32) / 255.0).unsqueeze(0)
             
-            if 'A' in image_pil.getbands():
-                mask = torch.from_numpy(np.array(image_pil.getchannel('A')).astype(np.float32) / 255.0).unsqueeze(0)
-            else:
-                mask = torch.zeros((1, image_pil.height, image_pil.width), dtype=torch.float32, device="cpu")
-            
             output_images.append(image_tensor)
-            output_masks.append(mask)
         
         # Concatenate along the batch dimension (dim=0)
         images_tensor = torch.cat(output_images, dim=0)
-        masks_tensor = torch.cat(output_masks, dim=0)
         
         logging.info(f"Image batch processing successful. Batch shape: {images_tensor.shape}")
-        return (images_tensor, masks_tensor)
+        return (images_tensor,)
 
     def _process_image(self, image_bytes):
         logging.info("Processing as image...")
         image_pil = Image.open(io.BytesIO(image_bytes))
         
-        output_images = []
-        output_masks = []
-        
         # Ensure image is in RGB
         rgb_image_pil = image_pil.convert("RGB")
         image_tensor = torch.from_numpy(np.array(rgb_image_pil).astype(np.float32) / 255.0).unsqueeze(0)
         
-        if 'A' in image_pil.getbands():
-            mask = torch.from_numpy(np.array(image_pil.getchannel('A')).astype(np.float32) / 255.0).unsqueeze(0)
-            output_masks.append(mask)
-        
-        output_images.append(image_tensor)
-        
-        if not output_masks:
-            mask = torch.zeros((1, image_pil.height, image_pil.width), dtype=torch.float32, device="cpu")
-            output_masks.append(mask)
-        
-        images_tensor = torch.cat(output_images, dim=0)
-        masks_tensor = torch.cat(output_masks, dim=0)
-        
         logging.info("Image processing successful.")
-        return (images_tensor, masks_tensor)
+        return (image_tensor,)
 
     def _process_video(self, video_bytes):
         logging.info("Processing as video...")
@@ -173,12 +149,8 @@ class MediaStreamInput:
         # Stack frames into a single tensor (batch of images)
         video_tensor = torch.stack(frames)
         
-        # THE FIX: The mask must have the same batch dimension as the image tensor.
-        batch_size, height, width, _ = video_tensor.shape
-        mask_tensor = torch.zeros((batch_size, height, width), dtype=torch.float32, device="cpu")
-
-        logging.info(f"Video processing successful. Image Shape: {video_tensor.shape}, Mask Shape: {mask_tensor.shape}")
-        return (video_tensor, mask_tensor)
+        logging.info(f"Video processing successful. Image Shape: {video_tensor.shape}")
+        return (video_tensor,)
 
 
 # --- MediaStreamOutput: Universal Media Uploader & SQS Notifier ---
