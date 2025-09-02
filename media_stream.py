@@ -211,11 +211,20 @@ class MediaStreamOutput:
         elif format == "mp4":
             self._upload_video(images, presigned_upload_url, framerate)
         
-        # After upload, send the full, parsed dictionary of outputs to the SQS queue.
+        # This node is responsible for a single output. We find its corresponding object key.
+        output_key_for_this_node = final_outputs_dict.get(output_name)
+        if not output_key_for_this_node:
+            logging.error(f"FATAL: Could not find object key for output name '{output_name}' in output_object_keys.")
+            # Send an empty dictionary to signal failure.
+            final_outputs_for_sqs = {}
+        else:
+            final_outputs_for_sqs = {output_name: output_key_for_this_node}
+
+        # After upload, send the filtered dictionary of outputs to the SQS queue.
         completion_message = {
             "job_id": job_id,
             "status": "completed",
-            "outputs": final_outputs_dict
+            "outputs": final_outputs_for_sqs
         }
         
         try:
