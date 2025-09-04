@@ -10,8 +10,8 @@ PRESET_HOOK = "PRESET_HOOK"
 class NilorPreset:
     @classmethod
     def INPUT_TYPES(cls):
-        # Fixed number of generic inputs for V1; dynamic inputs handled by companion JS
-        optional_inputs = {f"input_{i}": (PRESET_HOOK,) for i in range(1, 9)}
+        # Start with a single hook; dynamic inputs handled by companion JS
+        optional_inputs = {"_preset_hook_1": (PRESET_HOOK,)}
         return {
             "required": {
                 "preset_group_name": ("STRING", {"default": "resolutions", "multiline": False}),
@@ -36,7 +36,7 @@ NODE_CLASS_MAPPINGS = {
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "NilorPreset": "👺 Preset Controller",
+    "NilorPreset": "👺 UserInput Preset Controller",
 }
 
 
