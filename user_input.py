@@ -3,7 +3,7 @@ subcategories = {
     "io": "/IO",
 }
 
-from .controllers import PRESET_HOOK
+from .controllers import CONTROLLER_HOOK
 
 class NilorUserInput_String:
     @classmethod
@@ -14,8 +14,8 @@ class NilorUserInput_String:
                 "value": ("STRING", {"default": "", "multiline": True}),
             }
         }
-    RETURN_TYPES = ("STRING", PRESET_HOOK)
-    RETURN_NAMES = ("string", "_preset_hook")
+    RETURN_TYPES = ("STRING", CONTROLLER_HOOK)
+    RETURN_NAMES = ("string", "_controller_hook")
     FUNCTION = "get_value"
     CATEGORY = category + subcategories["io"]
 
@@ -31,8 +31,8 @@ class NilorUserInput_Int:
                 "value": ("INT", {"default": 0}),
             }
         }
-    RETURN_TYPES = ("INT", PRESET_HOOK)
-    RETURN_NAMES = ("int", "_preset_hook")
+    RETURN_TYPES = ("INT", CONTROLLER_HOOK)
+    RETURN_NAMES = ("int", "_controller_hook")
     FUNCTION = "get_value"
     CATEGORY = category + subcategories["io"]
 
@@ -48,8 +48,8 @@ class NilorUserInput_Float:
                 "value": ("FLOAT", {"default": 0.0}),
             }
         }
-    RETURN_TYPES = ("FLOAT", PRESET_HOOK)
-    RETURN_NAMES = ("float", "_preset_hook")
+    RETURN_TYPES = ("FLOAT", CONTROLLER_HOOK)
+    RETURN_NAMES = ("float", "_controller_hook")
     FUNCTION = "get_value"
     CATEGORY = category + subcategories["io"]
 
@@ -65,8 +65,8 @@ class NilorUserInput_Boolean:
                 "value": ("BOOLEAN", {"default": False}),
             }
         }
-    RETURN_TYPES = ("BOOLEAN", PRESET_HOOK)
-    RETURN_NAMES = ("boolean", "_preset_hook")
+    RETURN_TYPES = ("BOOLEAN", CONTROLLER_HOOK)
+    RETURN_NAMES = ("boolean", "_controller_hook")
     FUNCTION = "get_value"
     CATEGORY = category + subcategories["io"]
 
