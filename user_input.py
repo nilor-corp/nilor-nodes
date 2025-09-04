@@ -3,6 +3,8 @@ subcategories = {
     "io": "/IO",
 }
 
+from .controllers import PRESET_HOOK
+
 class NilorUserInput_String:
     @classmethod
     def INPUT_TYPES(cls):
@@ -12,13 +14,13 @@ class NilorUserInput_String:
                 "value": ("STRING", {"default": "", "multiline": True}),
             }
         }
-    RETURN_TYPES = ("STRING",)
-    RETURN_NAMES = ("string",)
+    RETURN_TYPES = ("STRING", PRESET_HOOK)
+    RETURN_NAMES = ("string", "_preset_hook")
     FUNCTION = "get_value"
     CATEGORY = category + subcategories["io"]
 
     def get_value(self, input_name, value):
-        return (value,)
+        return (value, None)
 
 class NilorUserInput_Int:
     @classmethod
@@ -29,13 +31,13 @@ class NilorUserInput_Int:
                 "value": ("INT", {"default": 0}),
             }
         }
-    RETURN_TYPES = ("INT",)
-    RETURN_NAMES = ("int",)
+    RETURN_TYPES = ("INT", PRESET_HOOK)
+    RETURN_NAMES = ("int", "_preset_hook")
     FUNCTION = "get_value"
     CATEGORY = category + subcategories["io"]
 
     def get_value(self, input_name, value):
-        return (value,)
+        return (value, None)
 
 class NilorUserInput_Float:
     @classmethod
@@ -46,13 +48,13 @@ class NilorUserInput_Float:
                 "value": ("FLOAT", {"default": 0.0}),
             }
         }
-    RETURN_TYPES = ("FLOAT",)
-    RETURN_NAMES = ("float",)
+    RETURN_TYPES = ("FLOAT", PRESET_HOOK)
+    RETURN_NAMES = ("float", "_preset_hook")
     FUNCTION = "get_value"
     CATEGORY = category + subcategories["io"]
 
     def get_value(self, input_name, value):
-        return (value,)
+        return (value, None)
 
 class NilorUserInput_Boolean:
     @classmethod
@@ -63,13 +65,13 @@ class NilorUserInput_Boolean:
                 "value": ("BOOLEAN", {"default": False}),
             }
         }
-    RETURN_TYPES = ("BOOLEAN",)
-    RETURN_NAMES = ("boolean",)
+    RETURN_TYPES = ("BOOLEAN", PRESET_HOOK)
+    RETURN_NAMES = ("boolean", "_preset_hook")
     FUNCTION = "get_value"
     CATEGORY = category + subcategories["io"]
 
     def get_value(self, input_name, value):
-        return (value,)
+        return (value, None)
 
 NODE_CLASS_MAPPINGS = {
     "NilorUserInput_String": NilorUserInput_String,
