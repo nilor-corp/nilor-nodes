@@ -9,8 +9,14 @@ import threading
 # --- Background Services ---
 
 # 1. Start the SQS Worker Consumer
+import asyncio
 from .worker_consumer import consume_jobs
-consumer_thread = threading.Thread(target=consume_jobs, daemon=True)
+
+def start_consumer_loop():
+    """Synchronous wrapper to run the asyncio event loop for the consumer."""
+    asyncio.run(consume_jobs())
+
+consumer_thread = threading.Thread(target=start_consumer_loop, daemon=True)
 consumer_thread.start()
 print("✅ Nilor-Nodes: SQS worker consumer thread started.")
 
