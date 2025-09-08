@@ -26,7 +26,8 @@ else:
 
 # --- Configuration ---
 SQS_ENDPOINT_URL = os.getenv("SQS_ENDPOINT_URL", "http://localhost:9324")
-SQS_QUEUE_NAME = os.getenv("SQS_JOBS_TO_PROCESS_QUEUE_NAME", "jobs_to_process")
+SQS_JOBS_TO_PROCESS_QUEUE_NAME = os.getenv("SQS_JOBS_TO_PROCESS_QUEUE_NAME", "jobs_to_process")
+SQS_JOB_STATUS_UPDATES_QUEUE_NAME = os.getenv("SQS_JOB_STATUS_UPDATES_QUEUE_NAME", "job_status_updates")
 COMFYUI_API_URL = os.getenv("COMFYUI_API_URL", "http://127.0.0.1:8188") + "/prompt"
 AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID", "local")
 AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY", "local")
@@ -46,26 +47,27 @@ class WorkerConsumer:
             aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
             region_name=AWS_DEFAULT_REGION
         )
-        self.queue_url = self._get_queue_url()
+        self.jobs_queue_url = self._get_queue_url(SQS_JOBS_TO_PROCESS_QUEUE_NAME)
+        self.status_updates_queue_url = self._get_queue_url(SQS_JOB_STATUS_UPDATES_QUEUE_NAME)
 
-    def _get_queue_url(self):
+    def _get_queue_url(self, queue_name):
         """Retrieves the SQS queue URL."""
         try:
-            response = self.sqs_client.get_queue_url(QueueName=SQS_QUEUE_NAME)
-            logging.info(f"Successfully retrieved queue URL for '{SQS_QUEUE_NAME}'")
+            response = self.sqs_client.get_queue_url(QueueName=queue_name)
+            logging.info(f"Successfully retrieved queue URL for '{queue_name}'")
             return response['QueueUrl']
         except self.sqs_client.exceptions.QueueDoesNotExist:
-            logging.error(f"Queue '{SQS_QUEUE_NAME}' does not exist. Please ensure it's created.")
+            logging.error(f"Queue '{queue_name}' does not exist. Please ensure it's created.")
             raise
 
     def consume_loop(self):
         """The main loop to continuously poll for and process messages."""
-        logging.info(f"Starting worker consumer. Polling queue: {self.queue_url}")
+        logging.info(f"Starting worker consumer. Polling queue: {self.jobs_queue_url}")
         while True:
             try:
                 logging.debug(f"Waiting for messages (long poll for {POLL_WAIT_TIME_SECONDS}s)...")
                 response = self.sqs_client.receive_message(
-                    QueueUrl=self.queue_url,
+                    QueueUrl=self.jobs_queue_url,
                     MaxNumberOfMessages=MAX_MESSAGES,
                     WaitTimeSeconds=POLL_WAIT_TIME_SECONDS
                 )
@@ -101,9 +103,12 @@ class WorkerConsumer:
 
             logging.info(f"Successfully submitted job to ComfyUI. Prompt ID: {response.json().get('prompt_id')}")
             
+            # Send a status update to the status queue
+            self._send_status_update(workflow_data, "running")
+
             # If submission is successful, delete the message from the queue
             self.sqs_client.delete_message(
-                QueueUrl=self.queue_url,
+                QueueUrl=self.jobs_queue_url,
                 ReceiptHandle=receipt_handle
             )
             logging.info(f"Deleted message {message['MessageId']} from the queue.")
@@ -115,12 +120,30 @@ class WorkerConsumer:
             logging.error(f"Failed to parse message body: {e}. Discarding malformed message.")
             # Delete the malformed message to prevent poison pill
             self.sqs_client.delete_message(
-                QueueUrl=self.queue_url,
+                QueueUrl=self.jobs_queue_url,
                 ReceiptHandle=receipt_handle
             )
         except Exception as e:
             logging.error(f"An unexpected error occurred while processing message: {e}. It will be retried.", exc_info=True)
             # Do NOT delete the message, let it retry
+
+    def _send_status_update(self, workflow_data, status):
+        """Sends a status update message to the SQS queue."""
+        job_id = workflow_data.get("client_id")
+        if not job_id:
+            logging.warning("No 'client_id' found in workflow data; skipping status update.")
+            return
+
+        try:
+            message_body = json.dumps({"job_id": job_id, "status": status})
+            self.sqs_client.send_message(
+                QueueUrl=self.status_updates_queue_url,
+                MessageBody=message_body
+            )
+            logging.info(f"Sent status update for job {job_id}: {status}")
+        except Exception as e:
+            logging.error(f"Failed to send status update for job {job_id}: {e}", exc_info=True)
+
 
 def consume_jobs():
     """Entry point function to be called in a background thread."""
