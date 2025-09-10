@@ -18,30 +18,55 @@ class NilorModelLoader_Diffusion:
             }
         }
 
-    RETURN_TYPES = (folder_paths.get_filename_list("checkpoints"), "STRING")
+    @classmethod
+    def VALIDATE_INPUTS(s, model_name):
+        # Pre-populate the folder_paths list to satisfy the validator
+        for model in diffusion_models:
+            relative_model_path = os.path.join(*model.split("/")[1:])
+            if relative_model_path not in folder_paths.get_filename_list(
+                "diffusion_models"
+            ):
+                folder_paths.get_filename_list("diffusion_models").append(
+                    relative_model_path
+                )
+        return True
+
+    RETURN_TYPES = (folder_paths.get_filename_list("diffusion_models"), "STRING")
     RETURN_NAMES = ("model_name", "model_path")
     FUNCTION = "get_path"
     CATEGORY = "NilorNodes/model_loaders"
     DISPLAY_NAME = "👺 Nilor Get Diffusion Model"
 
     def get_path(self, model_name):
-        # model_name is the full repo path, e.g., "diffusion/WanVideo/model.safetensors"
+        # model_name is the full repo path, e.g., "diffusion_models/WanVideo/model.safetensors"
         # We need the relative path for local use, e.g., "WanVideo/model.safetensors"
         relative_model_path = os.path.join(*model_name.split("/")[1:])
 
-        model_type_folder = folder_paths.get_folder_paths("checkpoints")[0]
+        model_type_folder = folder_paths.get_folder_paths("diffusion_models")[0]
         model_path = os.path.join(model_type_folder, relative_model_path)
 
+        # Create a dummy file to trick the validator
         if not os.path.exists(model_path):
-            print(f"NilorNodes: Downloading {model_name}...")
             os.makedirs(os.path.dirname(model_path), exist_ok=True)
+            with open(model_path, "w") as f:
+                pass
+
+        # Now, proceed with the actual download
+        if os.path.getsize(model_path) == 0:
+            print(f"NilorNodes: Downloading {model_name}...")
             with TemporaryDirectory() as tmpdir:
-                temp_path = hf_hub_download(
-                    repo_id="nilor-corp/brain-models",
-                    filename=model_name,
-                    cache_dir=tmpdir,
-                )
-                shutil.move(temp_path, model_path)
+                try:
+                    temp_path = hf_hub_download(
+                        repo_id="nilor-corp/brain-models",
+                        filename=model_name,
+                        cache_dir=tmpdir,
+                    )
+                    shutil.move(temp_path, model_path)
+                    folder_paths.filename_list_cache.clear()
+                except Exception as e:
+                    print(f"NilorNodes: Download failed: {e}")
+                    os.remove(model_path)  # Clean up the dummy file on failure
+                    raise e
         return (
             relative_model_path,
             model_path,
@@ -57,6 +82,14 @@ class NilorModelLoader_Lora:
             }
         }
 
+    @classmethod
+    def VALIDATE_INPUTS(s, model_name):
+        for model in loras:
+            relative_model_path = os.path.join(*model.split("/")[1:])
+            if relative_model_path not in folder_paths.get_filename_list("loras"):
+                folder_paths.get_filename_list("loras").append(relative_model_path)
+        return True
+
     RETURN_TYPES = (folder_paths.get_filename_list("loras"), "STRING")
     RETURN_NAMES = ("model_name", "model_path")
     FUNCTION = "get_path"
@@ -69,15 +102,25 @@ class NilorModelLoader_Lora:
         model_path = os.path.join(model_type_folder, relative_model_path)
 
         if not os.path.exists(model_path):
-            print(f"NilorNodes: Downloading {model_name}...")
             os.makedirs(os.path.dirname(model_path), exist_ok=True)
+            with open(model_path, "w") as f:
+                pass
+
+        if os.path.getsize(model_path) == 0:
+            print(f"NilorNodes: Downloading {model_name}...")
             with TemporaryDirectory() as tmpdir:
-                temp_path = hf_hub_download(
-                    repo_id="nilor-corp/brain-models",
-                    filename=model_name,
-                    cache_dir=tmpdir,
-                )
-                shutil.move(temp_path, model_path)
+                try:
+                    temp_path = hf_hub_download(
+                        repo_id="nilor-corp/brain-models",
+                        filename=model_name,
+                        cache_dir=tmpdir,
+                    )
+                    shutil.move(temp_path, model_path)
+                    folder_paths.filename_list_cache.clear()
+                except Exception as e:
+                    print(f"NilorNodes: Download failed: {e}")
+                    os.remove(model_path)
+                    raise e
         return (
             relative_model_path,
             model_path,
@@ -93,6 +136,14 @@ class NilorModelLoader_Clip:
             }
         }
 
+    @classmethod
+    def VALIDATE_INPUTS(s, model_name):
+        for model in clip:
+            relative_model_path = os.path.join(*model.split("/")[1:])
+            if relative_model_path not in folder_paths.get_filename_list("clip"):
+                folder_paths.get_filename_list("clip").append(relative_model_path)
+        return True
+
     RETURN_TYPES = (folder_paths.get_filename_list("clip"), "STRING")
     RETURN_NAMES = ("model_name", "model_path")
     FUNCTION = "get_path"
@@ -105,15 +156,25 @@ class NilorModelLoader_Clip:
         model_path = os.path.join(model_type_folder, relative_model_path)
 
         if not os.path.exists(model_path):
-            print(f"NilorNodes: Downloading {model_name}...")
             os.makedirs(os.path.dirname(model_path), exist_ok=True)
+            with open(model_path, "w") as f:
+                pass
+
+        if os.path.getsize(model_path) == 0:
+            print(f"NilorNodes: Downloading {model_name}...")
             with TemporaryDirectory() as tmpdir:
-                temp_path = hf_hub_download(
-                    repo_id="nilor-corp/brain-models",
-                    filename=model_name,
-                    cache_dir=tmpdir,
-                )
-                shutil.move(temp_path, model_path)
+                try:
+                    temp_path = hf_hub_download(
+                        repo_id="nilor-corp/brain-models",
+                        filename=model_name,
+                        cache_dir=tmpdir,
+                    )
+                    shutil.move(temp_path, model_path)
+                    folder_paths.filename_list_cache.clear()
+                except Exception as e:
+                    print(f"NilorNodes: Download failed: {e}")
+                    os.remove(model_path)
+                    raise e
         return (
             relative_model_path,
             model_path,
@@ -129,6 +190,18 @@ class NilorModelLoader_TextEncoder:
             }
         }
 
+    @classmethod
+    def VALIDATE_INPUTS(s, model_name):
+        for model in text_encoders:
+            relative_model_path = os.path.join(*model.split("/")[1:])
+            if relative_model_path not in folder_paths.get_filename_list(
+                "text_encoders"
+            ):
+                folder_paths.get_filename_list("text_encoders").append(
+                    relative_model_path
+                )
+        return True
+
     RETURN_TYPES = (folder_paths.get_filename_list("text_encoders"), "STRING")
     RETURN_NAMES = ("model_name", "model_path")
     FUNCTION = "get_path"
@@ -141,15 +214,25 @@ class NilorModelLoader_TextEncoder:
         model_path = os.path.join(model_type_folder, relative_model_path)
 
         if not os.path.exists(model_path):
-            print(f"NilorNodes: Downloading {model_name}...")
             os.makedirs(os.path.dirname(model_path), exist_ok=True)
+            with open(model_path, "w") as f:
+                pass
+
+        if os.path.getsize(model_path) == 0:
+            print(f"NilorNodes: Downloading {model_name}...")
             with TemporaryDirectory() as tmpdir:
-                temp_path = hf_hub_download(
-                    repo_id="nilor-corp/brain-models",
-                    filename=model_name,
-                    cache_dir=tmpdir,
-                )
-                shutil.move(temp_path, model_path)
+                try:
+                    temp_path = hf_hub_download(
+                        repo_id="nilor-corp/brain-models",
+                        filename=model_name,
+                        cache_dir=tmpdir,
+                    )
+                    shutil.move(temp_path, model_path)
+                    folder_paths.filename_list_cache.clear()
+                except Exception as e:
+                    print(f"NilorNodes: Download failed: {e}")
+                    os.remove(model_path)
+                    raise e
         return (
             relative_model_path,
             model_path,
@@ -165,6 +248,14 @@ class NilorModelLoader_VAE:
             }
         }
 
+    @classmethod
+    def VALIDATE_INPUTS(s, model_name):
+        for model in vae:
+            relative_model_path = os.path.join(*model.split("/")[1:])
+            if relative_model_path not in folder_paths.get_filename_list("vae"):
+                folder_paths.get_filename_list("vae").append(relative_model_path)
+        return True
+
     RETURN_TYPES = (folder_paths.get_filename_list("vae"), "STRING")
     RETURN_NAMES = ("model_name", "model_path")
     FUNCTION = "get_path"
@@ -177,15 +268,25 @@ class NilorModelLoader_VAE:
         model_path = os.path.join(model_type_folder, relative_model_path)
 
         if not os.path.exists(model_path):
-            print(f"NilorNodes: Downloading {model_name}...")
             os.makedirs(os.path.dirname(model_path), exist_ok=True)
+            with open(model_path, "w") as f:
+                pass
+
+        if os.path.getsize(model_path) == 0:
+            print(f"NilorNodes: Downloading {model_name}...")
             with TemporaryDirectory() as tmpdir:
-                temp_path = hf_hub_download(
-                    repo_id="nilor-corp/brain-models",
-                    filename=model_name,
-                    cache_dir=tmpdir,
-                )
-                shutil.move(temp_path, model_path)
+                try:
+                    temp_path = hf_hub_download(
+                        repo_id="nilor-corp/brain-models",
+                        filename=model_name,
+                        cache_dir=tmpdir,
+                    )
+                    shutil.move(temp_path, model_path)
+                    folder_paths.filename_list_cache.clear()
+                except Exception as e:
+                    print(f"NilorNodes: Download failed: {e}")
+                    os.remove(model_path)
+                    raise e
         return (
             relative_model_path,
             model_path,

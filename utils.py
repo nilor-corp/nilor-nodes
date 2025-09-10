@@ -59,7 +59,7 @@ def get_hf_model_lists():
         print(f"NilorNodes: Error fetching model list from Hugging Face Hub: {e}")
         return [], [], [], [], []
 
-    diffusion_models = [f for f in repo_files if f.startswith("diffusion/")]
+    diffusion_models = [f for f in repo_files if f.startswith("diffusion_models/")]
     loras = [f for f in repo_files if f.startswith("loras/")]
     clip = [f for f in repo_files if f.startswith("clip/")]
     text_encoders = [f for f in repo_files if f.startswith("text_encoders/")]
