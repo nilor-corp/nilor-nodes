@@ -15,6 +15,7 @@ class NilorPreset:
       presets_config.json5 via PresetsService (drives dropdown + value application).
     - _preset_hook_*: Dynamic inputs that accept CONTROLLER_HOOK from NilorUserInput_* `_controller_hook` outputs.
     """
+
     @classmethod
     def INPUT_TYPES(cls):
         # Start with a single hook; dynamic inputs handled by companion JS
@@ -22,7 +23,10 @@ class NilorPreset:
         return {
             "required": {
                 # Lookup key in presets_config.json5 (NOT a UI label)
-                "preset_group_name": ("STRING", {"default": "my_preset", "multiline": False}),
+                "preset_group_name": (
+                    "STRING",
+                    {"default": "my_preset", "multiline": False},
+                ),
             },
             "optional": optional_inputs,
         }
@@ -48,6 +52,7 @@ class NilorGroup:
     - _group_hook_*: Dynamic inputs that accept CONTROLLER_HOOK from NilorUserInput_* `_controller_hook` outputs.
       Reuses a shared controller hook so no additional output types are required on input nodes.
     """
+
     @classmethod
     def INPUT_TYPES(cls):
         # Start with a single hook; dynamic inputs handled by companion JS
@@ -81,5 +86,3 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "NilorPreset": "👺 User Input Preset Controller",
     "NilorGroup": "👺 User Input Group Controller",
 }
-
-

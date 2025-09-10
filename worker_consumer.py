@@ -7,6 +7,7 @@ submit them to the local ComfyUI server, and manage the message lifecycle.
 It also listens to the ComfyUI websocket to send a "running" status update
 at the precise moment that job execution begins.
 """
+
 import os
 import json
 import logging
@@ -19,7 +20,7 @@ from dotenv import load_dotenv
 # --- Load Environment Variables ---
 # Load from the .env file in the same directory
 current_dir = os.path.dirname(os.path.abspath(__file__))
-dotenv_path = os.path.join(current_dir, '.env')
+dotenv_path = os.path.join(current_dir, ".env")
 if os.path.exists(dotenv_path):
     load_dotenv(dotenv_path=dotenv_path)
     logging.info(f"Loaded environment variables from {dotenv_path}")
@@ -28,18 +29,25 @@ else:
 
 # --- Configuration ---
 SQS_ENDPOINT_URL = os.getenv("SQS_ENDPOINT_URL", "http://localhost:9324")
-SQS_JOBS_TO_PROCESS_QUEUE_NAME = os.getenv("SQS_JOBS_TO_PROCESS_QUEUE_NAME", "jobs_to_process")
-SQS_JOB_STATUS_UPDATES_QUEUE_NAME = os.getenv("SQS_JOB_STATUS_UPDATES_QUEUE_NAME", "job_status_updates")
+SQS_JOBS_TO_PROCESS_QUEUE_NAME = os.getenv(
+    "SQS_JOBS_TO_PROCESS_QUEUE_NAME", "jobs_to_process"
+)
+SQS_JOB_STATUS_UPDATES_QUEUE_NAME = os.getenv(
+    "SQS_JOB_STATUS_UPDATES_QUEUE_NAME", "job_status_updates"
+)
 COMFYUI_API_URL = os.getenv("COMFYUI_API_URL", "http://127.0.0.1:8188") + "/prompt"
 COMFYUI_WS_URL = os.getenv("COMFYUI_WS_URL", "ws://127.0.0.1:8188") + "/ws"
 AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID", "local")
 AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY", "local")
 AWS_DEFAULT_REGION = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
-POLL_WAIT_TIME_SECONDS = 20 # SQS Long Polling
+POLL_WAIT_TIME_SECONDS = 20  # SQS Long Polling
 MAX_MESSAGES = 1
 
 # --- Setup Logging ---
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
+
 
 class WorkerConsumer:
     def __init__(self):
@@ -53,15 +61,19 @@ class WorkerConsumer:
     async def _initialize_sqs(self):
         """Initializes SQS queue URLs."""
         async with self.session.create_client(
-            'sqs',
+            "sqs",
             region_name=AWS_DEFAULT_REGION,
             endpoint_url=SQS_ENDPOINT_URL,
             aws_access_key_id=AWS_ACCESS_KEY_ID,
-            aws_secret_access_key=AWS_SECRET_ACCESS_KEY
+            aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
         ) as client:
             try:
-                self.jobs_queue_url = await self._get_queue_url(client, SQS_JOBS_TO_PROCESS_QUEUE_NAME)
-                self.status_updates_queue_url = await self._get_queue_url(client, SQS_JOB_STATUS_UPDATES_QUEUE_NAME)
+                self.jobs_queue_url = await self._get_queue_url(
+                    client, SQS_JOBS_TO_PROCESS_QUEUE_NAME
+                )
+                self.status_updates_queue_url = await self._get_queue_url(
+                    client, SQS_JOB_STATUS_UPDATES_QUEUE_NAME
+                )
             except Exception as e:
                 logging.error(f"Failed to initialize SQS queues: {e}")
                 raise
@@ -70,7 +82,7 @@ class WorkerConsumer:
         """Retrieves the SQS queue URL."""
         try:
             response = await client.get_queue_url(QueueName=queue_name)
-            return response['QueueUrl']
+            return response["QueueUrl"]
         except client.exceptions.QueueDoesNotExist:
             logging.error(f"SQS queue '{queue_name}' does not exist.")
             raise
@@ -89,52 +101,77 @@ class WorkerConsumer:
                                 data = event.get("data", {})
                                 prompt_id = data.get("prompt_id")
 
-                                if not prompt_id and 'sid' in data:
-                                    prompt_id = data['sid']
+                                if not prompt_id and "sid" in data:
+                                    prompt_id = data["sid"]
 
                                 if not prompt_id:
                                     continue
 
                                 # Use the first progress event as a signal that the job is running.
-                                if event_type in ["progress", "progress_state"] and prompt_id in self.prompt_id_to_job_id_map and prompt_id not in self.sent_running_status_prompts:
+                                if (
+                                    event_type in ["progress", "progress_state"]
+                                    and prompt_id in self.prompt_id_to_job_id_map
+                                    and prompt_id
+                                    not in self.sent_running_status_prompts
+                                ):
                                     job_id = self.prompt_id_to_job_id_map[prompt_id]
-                                    logging.info(f"Execution started for prompt_id {prompt_id} (job_id: {job_id}) via '{event_type}' event. Sending 'running' status.")
+                                    logging.info(
+                                        f"Execution started for prompt_id {prompt_id} (job_id: {job_id}) via '{event_type}' event. Sending 'running' status."
+                                    )
                                     await self._send_status_update(job_id, "running")
                                     self.sent_running_status_prompts.add(prompt_id)
 
                                 # Handle execution errors
                                 elif event_type == "execution_error":
-                                    logging.error(f"Received execution error for prompt_id {prompt_id}: {data}")
+                                    logging.error(
+                                        f"Received execution error for prompt_id {prompt_id}: {data}"
+                                    )
                                     if prompt_id in self.prompt_id_to_job_id_map:
                                         self.prompt_id_to_job_id_map.pop(prompt_id)
                                     self.sent_running_status_prompts.discard(prompt_id)
 
                                 # Log successful execution
                                 elif event_type == "executed":
-                                    logging.info(f"Prompt {prompt_id} executed successfully according to websocket event. Final node is responsible for sending completion message.")
+                                    logging.info(
+                                        f"Prompt {prompt_id} executed successfully according to websocket event. Final node is responsible for sending completion message."
+                                    )
                                     if prompt_id in self.prompt_id_to_job_id_map:
                                         self.prompt_id_to_job_id_map.pop(prompt_id)
                                     self.sent_running_status_prompts.discard(prompt_id)
-                                        
+
                                 elif event_type not in ["progress", "progress_state"]:
-                                    logging.info(f"Received ComfyUI websocket event of type '{event_type}': {data}")
+                                    logging.info(
+                                        f"Received ComfyUI websocket event of type '{event_type}': {data}"
+                                    )
 
                             except json.JSONDecodeError:
-                                logging.debug("Received non-JSON text message from websocket, ignoring.")
+                                logging.debug(
+                                    "Received non-JSON text message from websocket, ignoring."
+                                )
                         else:
-                            logging.debug("Received binary message from websocket, ignoring.")
-            except (websockets.exceptions.ConnectionClosedError, ConnectionRefusedError) as e:
-                logging.warning(f"ComfyUI websocket connection failed: {e}. Retrying in 5 seconds...")
+                            logging.debug(
+                                "Received binary message from websocket, ignoring."
+                            )
+            except (
+                websockets.exceptions.ConnectionClosedError,
+                ConnectionRefusedError,
+            ) as e:
+                logging.warning(
+                    f"ComfyUI websocket connection failed: {e}. Retrying in 5 seconds..."
+                )
                 await asyncio.sleep(5)
             except Exception as e:
-                logging.error(f"An unexpected error occurred in the websocket listener: {e}", exc_info=True)
+                logging.error(
+                    f"An unexpected error occurred in the websocket listener: {e}",
+                    exc_info=True,
+                )
                 await asyncio.sleep(10)
 
     async def consume_loop(self):
         """The main loop to continuously poll for and process messages."""
         await self._initialize_sqs()
         logging.info(f"Starting worker consumer. Polling queue: {self.jobs_queue_url}")
-        
+
         # Start the websocket listener in the background
         listener_task = asyncio.create_task(self.listen_for_comfy_events())
 
@@ -143,19 +180,19 @@ class WorkerConsumer:
                 logging.debug("Polling for messages...")
                 try:
                     async with self.session.create_client(
-                        'sqs',
+                        "sqs",
                         region_name=AWS_DEFAULT_REGION,
                         endpoint_url=SQS_ENDPOINT_URL,
                         aws_access_key_id=AWS_ACCESS_KEY_ID,
-                        aws_secret_access_key=AWS_SECRET_ACCESS_KEY
+                        aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
                     ) as client:
                         response = await client.receive_message(
                             QueueUrl=self.jobs_queue_url,
                             MaxNumberOfMessages=MAX_MESSAGES,
-                            WaitTimeSeconds=POLL_WAIT_TIME_SECONDS
+                            WaitTimeSeconds=POLL_WAIT_TIME_SECONDS,
                         )
-                    
-                    messages = response.get('Messages', [])
+
+                    messages = response.get("Messages", [])
                     if not messages:
                         logging.debug("No messages received.")
                         continue
@@ -163,30 +200,36 @@ class WorkerConsumer:
                     for message in messages:
                         try:
                             await self.process_message(message)
-                            
+
                             # On successful processing, delete the message
                             async with self.session.create_client(
-                                'sqs',
+                                "sqs",
                                 region_name=AWS_DEFAULT_REGION,
                                 endpoint_url=SQS_ENDPOINT_URL,
                                 aws_access_key_id=AWS_ACCESS_KEY_ID,
-                                aws_secret_access_key=AWS_SECRET_ACCESS_KEY
+                                aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
                             ) as client:
                                 await client.delete_message(
                                     QueueUrl=self.jobs_queue_url,
-                                    ReceiptHandle=message['ReceiptHandle']
+                                    ReceiptHandle=message["ReceiptHandle"],
                                 )
-                            logging.info(f"Deleted message {message['MessageId']} from queue.")
+                            logging.info(
+                                f"Deleted message {message['MessageId']} from queue."
+                            )
                         except json.JSONDecodeError:
                             # This is a poison pill message, log it but don't retry.
                             # It will be moved to the DLQ after enough failed receives.
-                            logging.error(f"Message {message['MessageId']} is a poison pill (JSON decode failed) and will be ignored.")
+                            logging.error(
+                                f"Message {message['MessageId']} is a poison pill (JSON decode failed) and will be ignored."
+                            )
                         except Exception as e:
-                            logging.error(f"Processing failed for message {message['MessageId']}: {e}. It will be returned to the queue for retry.")
+                            logging.error(
+                                f"Processing failed for message {message['MessageId']}: {e}. It will be returned to the queue for retry."
+                            )
 
                 except Exception as e:
                     logging.error(f"An error occurred in the consume loop: {e}")
-                    await asyncio.sleep(10) # Wait before retrying
+                    await asyncio.sleep(10)  # Wait before retrying
         finally:
             listener_task.cancel()
             await asyncio.gather(listener_task, return_exceptions=True)
@@ -195,27 +238,33 @@ class WorkerConsumer:
     async def process_message(self, message):
         """Processes a single SQS message."""
         logging.info(f"Processing message: {message['MessageId']}")
-        
+
         try:
-            body = json.loads(message['Body'])
+            body = json.loads(message["Body"])
             # SQS messages are often double-encoded, with the actual payload inside a 'Message' key.
-            if 'Message' in body:
-                job_payload = json.loads(body['Message'])
+            if "Message" in body:
+                job_payload = json.loads(body["Message"])
             else:
                 job_payload = body
 
-            job_id = job_payload.get('client_id') # The workflow payload uses 'client_id' for the job_id
+            job_id = job_payload.get(
+                "client_id"
+            )  # The workflow payload uses 'client_id' for the job_id
 
             # Validate that the payload has the required keys before submitting.
-            if not job_id or 'prompt' not in job_payload:
-                logging.error(f"Invalid message format: missing 'client_id' or 'prompt'. Payload: {job_payload}")
+            if not job_id or "prompt" not in job_payload:
+                logging.error(
+                    f"Invalid message format: missing 'client_id' or 'prompt'. Payload: {job_payload}"
+                )
                 return
 
             # Submit to ComfyUI
             await self._submit_job_to_comfyui(job_id, job_payload)
-            
+
         except Exception as e:
-            logging.error(f"An unexpected error occurred while processing message: {e}. It will be retried.")
+            logging.error(
+                f"An unexpected error occurred while processing message: {e}. It will be retried."
+            )
             # Re-raise to prevent deletion from queue if we want SQS to handle retry
             raise
 
@@ -223,43 +272,57 @@ class WorkerConsumer:
         """Submits a single job to the ComfyUI API."""
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.post(COMFYUI_API_URL, json=workflow_data, timeout=30) as response:
+                async with session.post(
+                    COMFYUI_API_URL, json=workflow_data, timeout=30
+                ) as response:
                     response.raise_for_status()
                     response_json = await response.json()
-                    prompt_id = response_json.get('prompt_id')
-                    logging.info(f"Successfully submitted job to ComfyUI. Prompt ID: {prompt_id}")
+                    prompt_id = response_json.get("prompt_id")
+                    logging.info(
+                        f"Successfully submitted job to ComfyUI. Prompt ID: {prompt_id}"
+                    )
                     self.prompt_id_to_job_id_map[prompt_id] = job_id
-            
+
             # No need to delete here, the consume_loop handles message deletion
         except aiohttp.ClientError as e:
-            logging.error(f"Failed to submit job to ComfyUI: {e}. Message will be retried.")
+            logging.error(
+                f"Failed to submit job to ComfyUI: {e}. Message will be retried."
+            )
         except (json.JSONDecodeError, KeyError) as e:
-            logging.error(f"Failed to parse ComfyUI response: {e}. Discarding malformed response.")
+            logging.error(
+                f"Failed to parse ComfyUI response: {e}. Discarding malformed response."
+            )
         except Exception as e:
-            logging.error(f"An unexpected error occurred while submitting job to ComfyUI: {e}", exc_info=True)
+            logging.error(
+                f"An unexpected error occurred while submitting job to ComfyUI: {e}",
+                exc_info=True,
+            )
 
     async def _send_status_update(self, job_id, status):
         try:
             message_body = json.dumps({"job_id": job_id, "status": status})
             async with self.session.create_client(
-                'sqs',
+                "sqs",
                 region_name=AWS_DEFAULT_REGION,
                 endpoint_url=SQS_ENDPOINT_URL,
                 aws_access_key_id=AWS_ACCESS_KEY_ID,
-                aws_secret_access_key=AWS_SECRET_ACCESS_KEY
+                aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
             ) as client:
                 await client.send_message(
-                    QueueUrl=self.status_updates_queue_url,
-                    MessageBody=message_body
+                    QueueUrl=self.status_updates_queue_url, MessageBody=message_body
                 )
             logging.info(f"Sent status update for job {job_id}: {status}")
         except Exception as e:
-            logging.error(f"Failed to send status update for job {job_id}: {e}", exc_info=True)
+            logging.error(
+                f"Failed to send status update for job {job_id}: {e}", exc_info=True
+            )
+
 
 async def consume_jobs():
     """Entry point function to be called in a background thread."""
     consumer = WorkerConsumer()
     await consumer.consume_loop()
+
 
 if __name__ == "__main__":
     asyncio.run(consume_jobs())

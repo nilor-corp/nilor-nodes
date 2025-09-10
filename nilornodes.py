@@ -1098,14 +1098,18 @@ class NilorBlurAnalysis:
         """
         # Ensure images is a 4D tensor.
         if images.dim() != 4:
-            raise ValueError("Input images must be a 4D tensor (batch, channels/height, height/width, width/channels)")
+            raise ValueError(
+                "Input images must be a 4D tensor (batch, channels/height, height/width, width/channels)"
+            )
 
         # Detect if using NCHW or NHWC.
         if images.shape[1] not in (1, 3):
             if images.shape[-1] in (1, 3):
                 images = images.permute(0, 3, 1, 2)
             else:
-                raise ValueError("Cannot determine image format (expected channel to be 1 or 3).")
+                raise ValueError(
+                    "Cannot determine image format (expected channel to be 1 or 3)."
+                )
 
         output_images = []
         batch_size = images.shape[0]
@@ -1116,9 +1120,7 @@ class NilorBlurAnalysis:
 
             # Convert to grayscale.
             if img_np.shape[0] >= 3:
-                gray = (0.299 * img_np[0] +
-                        0.587 * img_np[1] +
-                        0.114 * img_np[2])
+                gray = 0.299 * img_np[0] + 0.587 * img_np[1] + 0.114 * img_np[2]
             else:
                 gray = np.squeeze(img_np, axis=0)  # shape: (H, W)
 
@@ -1146,7 +1148,9 @@ class NilorBlurAnalysis:
             # Convert the single channel output to a 3-channel image.
             # This ensures downstream nodes (like MaskFromRGBCMYBW) that index into channels work properly.
             if out_img.ndim == 2:
-                out_img = np.stack([out_img, out_img, out_img], axis=-1)  # shape becomes (H, W, 3)
+                out_img = np.stack(
+                    [out_img, out_img, out_img], axis=-1
+                )  # shape becomes (H, W, 3)
 
             # Convert from PIL image (or numpy array) to tensor.
             # pil2tensor should create a tensor in a format that downstream nodes expect.
@@ -1156,6 +1160,7 @@ class NilorBlurAnalysis:
         # Fix 2: Use torch.stack to preserve the batch dimension.
         # If each output has shape, say, (H, W, 3), stacking them gives a tensor of shape (B, H, W, 3).
         return (torch.cat(output_images, dim=0),)
+
 
 class NilorToSparseIndexMethod:
     def __init__(self):
@@ -1179,7 +1184,7 @@ class NilorToSparseIndexMethod:
 
     def convert_to_sparse_index_method(self, ints):
         indexes_str = ",".join(map(str, ints))
-        
+
         return (indexes_str,)
 
 
