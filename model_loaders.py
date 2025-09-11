@@ -8,9 +8,16 @@ from tqdm.auto import tqdm
 import requests
 from huggingface_hub import hf_hub_url
 from huggingface_hub.utils import get_session
+import time
+import comfy.utils
+import comfy.sd
+import torch
 
 # Fetch model lists at startup
 diffusion_models, loras, clip, text_encoders, vae = get_hf_model_lists()
+
+
+# TODO: delete dummy model files if the actual model file is not downloaded and the workflow gets interrupted
 
 
 def _get_model_path_and_download(model_name, model_type):
@@ -62,9 +69,32 @@ def _get_model_path_and_download(model_name, model_type):
     )
 
 
-class NilorModelLoader_Diffusion:
-    OUTPUT_NODE = True
+def _validate_model_input(model_name, model_type):
+    parts = model_name.split("/")
+    if len(parts) > 1:
+        relative_model_path = os.path.join(*parts[1:])
+    else:
+        relative_model_path = model_name
 
+    model_type_folder = folder_paths.get_folder_paths(model_type)[0]
+    model_path = os.path.join(model_type_folder, relative_model_path)
+
+    if not os.path.exists(model_path):
+        os.makedirs(os.path.dirname(model_path), exist_ok=True)
+        with open(model_path, "w") as f:
+            pass
+        folder_paths.filename_list_cache.clear()
+
+    model_list = folder_paths.get_filename_list(model_type)
+    if relative_model_path not in model_list:
+        # Forcefully update the cache
+        if model_type in folder_paths.filename_list_cache:
+            folder_paths.filename_list_cache[model_type][0].append(relative_model_path)
+
+    return True
+
+
+class NilorModelLoader_Diffusion:
     @classmethod
     def INPUT_TYPES(s):
         return {
@@ -75,30 +105,13 @@ class NilorModelLoader_Diffusion:
 
     @classmethod
     def VALIDATE_INPUTS(s, model_name):
-        parts = model_name.split("/")
-        if len(parts) > 1:
-            relative_model_path = os.path.join(*parts[1:])
-        else:
-            relative_model_path = model_name
+        return _validate_model_input(model_name, "diffusion_models")
 
-        model_type_folder = folder_paths.get_folder_paths("diffusion_models")[0]
-        model_path = os.path.join(model_type_folder, relative_model_path)
-
-        if not os.path.exists(model_path):
-            os.makedirs(os.path.dirname(model_path), exist_ok=True)
-            with open(model_path, "w") as f:
-                pass
-            folder_paths.filename_list_cache.clear()
-
-        model_list = folder_paths.get_filename_list("diffusion_models")
-        if relative_model_path not in model_list:
-            # Forcefully update the cache
-            if "diffusion_models" in folder_paths.filename_list_cache:
-                folder_paths.filename_list_cache["diffusion_models"][0].append(
-                    relative_model_path
-                )
-
-        return True
+    @classmethod
+    def IS_CHANGED(s, model_name):
+        _validate_model_input(model_name, "diffusion_models")
+        s.RETURN_TYPES = (folder_paths.get_filename_list("diffusion_models"),)
+        return time.time()
 
     RETURN_TYPES = (folder_paths.get_filename_list("diffusion_models"),)
     RETURN_NAMES = ("ckpt_name",)
@@ -114,8 +127,6 @@ class NilorModelLoader_Diffusion:
 
 
 class NilorModelLoader_Lora:
-    OUTPUT_NODE = True
-
     @classmethod
     def INPUT_TYPES(s):
         return {
@@ -126,28 +137,13 @@ class NilorModelLoader_Lora:
 
     @classmethod
     def VALIDATE_INPUTS(s, model_name):
-        parts = model_name.split("/")
-        if len(parts) > 1:
-            relative_model_path = os.path.join(*parts[1:])
-        else:
-            relative_model_path = model_name
+        return _validate_model_input(model_name, "loras")
 
-        model_type_folder = folder_paths.get_folder_paths("loras")[0]
-        model_path = os.path.join(model_type_folder, relative_model_path)
-
-        if not os.path.exists(model_path):
-            os.makedirs(os.path.dirname(model_path), exist_ok=True)
-            with open(model_path, "w") as f:
-                pass
-            folder_paths.filename_list_cache.clear()
-
-        model_list = folder_paths.get_filename_list("loras")
-        if relative_model_path not in model_list:
-            # Forcefully update the cache
-            if "loras" in folder_paths.filename_list_cache:
-                folder_paths.filename_list_cache["loras"][0].append(relative_model_path)
-
-        return True
+    @classmethod
+    def IS_CHANGED(s, model_name):
+        _validate_model_input(model_name, "loras")
+        s.RETURN_TYPES = (folder_paths.get_filename_list("loras"),)
+        return time.time()
 
     RETURN_TYPES = (folder_paths.get_filename_list("loras"),)
     RETURN_NAMES = ("lora_name",)
@@ -163,8 +159,6 @@ class NilorModelLoader_Lora:
 
 
 class NilorModelLoader_Clip:
-    OUTPUT_NODE = True
-
     @classmethod
     def INPUT_TYPES(s):
         return {
@@ -175,28 +169,13 @@ class NilorModelLoader_Clip:
 
     @classmethod
     def VALIDATE_INPUTS(s, model_name):
-        parts = model_name.split("/")
-        if len(parts) > 1:
-            relative_model_path = os.path.join(*parts[1:])
-        else:
-            relative_model_path = model_name
+        return _validate_model_input(model_name, "clip")
 
-        model_type_folder = folder_paths.get_folder_paths("clip")[0]
-        model_path = os.path.join(model_type_folder, relative_model_path)
-
-        if not os.path.exists(model_path):
-            os.makedirs(os.path.dirname(model_path), exist_ok=True)
-            with open(model_path, "w") as f:
-                pass
-            folder_paths.filename_list_cache.clear()
-
-        model_list = folder_paths.get_filename_list("clip")
-        if relative_model_path not in model_list:
-            # Forcefully update the cache
-            if "clip" in folder_paths.filename_list_cache:
-                folder_paths.filename_list_cache["clip"][0].append(relative_model_path)
-
-        return True
+    @classmethod
+    def IS_CHANGED(s, model_name):
+        _validate_model_input(model_name, "clip")
+        s.RETURN_TYPES = (folder_paths.get_filename_list("clip"),)
+        return time.time()
 
     RETURN_TYPES = (folder_paths.get_filename_list("clip"),)
     RETURN_NAMES = ("clip_name",)
@@ -212,8 +191,6 @@ class NilorModelLoader_Clip:
 
 
 class NilorModelLoader_TextEncoder:
-    OUTPUT_NODE = True
-
     @classmethod
     def INPUT_TYPES(s):
         return {
@@ -224,30 +201,13 @@ class NilorModelLoader_TextEncoder:
 
     @classmethod
     def VALIDATE_INPUTS(s, model_name):
-        parts = model_name.split("/")
-        if len(parts) > 1:
-            relative_model_path = os.path.join(*parts[1:])
-        else:
-            relative_model_path = model_name
+        return _validate_model_input(model_name, "text_encoders")
 
-        model_type_folder = folder_paths.get_folder_paths("text_encoders")[0]
-        model_path = os.path.join(model_type_folder, relative_model_path)
-
-        if not os.path.exists(model_path):
-            os.makedirs(os.path.dirname(model_path), exist_ok=True)
-            with open(model_path, "w") as f:
-                pass
-            folder_paths.filename_list_cache.clear()
-
-        model_list = folder_paths.get_filename_list("text_encoders")
-        if relative_model_path not in model_list:
-            # Forcefully update the cache
-            if "text_encoders" in folder_paths.filename_list_cache:
-                folder_paths.filename_list_cache["text_encoders"][0].append(
-                    relative_model_path
-                )
-
-        return True
+    @classmethod
+    def IS_CHANGED(s, model_name):
+        _validate_model_input(model_name, "text_encoders")
+        s.RETURN_TYPES = (folder_paths.get_filename_list("text_encoders"),)
+        return time.time()
 
     RETURN_TYPES = (folder_paths.get_filename_list("text_encoders"),)
     RETURN_NAMES = ("clip_name",)
@@ -263,8 +223,6 @@ class NilorModelLoader_TextEncoder:
 
 
 class NilorModelLoader_VAE:
-    OUTPUT_NODE = True
-
     @classmethod
     def INPUT_TYPES(s):
         return {
@@ -275,28 +233,13 @@ class NilorModelLoader_VAE:
 
     @classmethod
     def VALIDATE_INPUTS(s, model_name):
-        parts = model_name.split("/")
-        if len(parts) > 1:
-            relative_model_path = os.path.join(*parts[1:])
-        else:
-            relative_model_path = model_name
+        return _validate_model_input(model_name, "vae")
 
-        model_type_folder = folder_paths.get_folder_paths("vae")[0]
-        model_path = os.path.join(model_type_folder, relative_model_path)
-
-        if not os.path.exists(model_path):
-            os.makedirs(os.path.dirname(model_path), exist_ok=True)
-            with open(model_path, "w") as f:
-                pass
-            folder_paths.filename_list_cache.clear()
-
-        model_list = folder_paths.get_filename_list("vae")
-        if relative_model_path not in model_list:
-            # Forcefully update the cache
-            if "vae" in folder_paths.filename_list_cache:
-                folder_paths.filename_list_cache["vae"][0].append(relative_model_path)
-
-        return True
+    @classmethod
+    def IS_CHANGED(s, model_name):
+        _validate_model_input(model_name, "vae")
+        s.RETURN_TYPES = (folder_paths.get_filename_list("vae"),)
+        return time.time()
 
     RETURN_TYPES = (folder_paths.get_filename_list("vae"),)
     RETURN_NAMES = ("vae_name",)
