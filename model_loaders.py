@@ -4,6 +4,10 @@ import folder_paths
 from .utils import get_hf_model_lists
 import shutil
 from tempfile import TemporaryDirectory
+from tqdm.auto import tqdm
+import requests
+from huggingface_hub import hf_hub_url
+from huggingface_hub.utils import get_session
 
 # Fetch model lists at startup
 diffusion_models, loras, clip, text_encoders, vae = get_hf_model_lists()
@@ -22,19 +26,32 @@ def _get_model_path_and_download(model_name, model_type):
 
     if os.path.getsize(model_path) == 0:
         print(f"NilorNodes: Downloading {model_name}...")
-        with TemporaryDirectory() as tmpdir:
-            try:
-                temp_path = hf_hub_download(
-                    repo_id="nilor-corp/brain-models",
-                    filename=model_name,
-                    cache_dir=tmpdir,
-                )
-                shutil.move(temp_path, model_path)
-                folder_paths.filename_list_cache.clear()
-            except Exception as e:
-                print(f"NilorNodes: Download failed: {e}")
+        try:
+            url = hf_hub_url(repo_id="nilor-corp/brain-models", filename=model_name)
+            hf_session = get_session()
+
+            with hf_session.get(url, stream=True) as r:
+                r.raise_for_status()
+                total_size = int(r.headers.get("content-length", 0))
+
+                with tqdm(
+                    total=total_size,
+                    unit="iB",
+                    unit_scale=True,
+                    desc=f"Downloading {os.path.basename(model_name)}",
+                ) as pbar:
+                    with open(model_path, "wb") as f:
+                        for chunk in r.iter_content(chunk_size=8192):
+                            f.write(chunk)
+                            pbar.update(len(chunk))
+
+            folder_paths.filename_list_cache.clear()
+        except Exception as e:
+            print(f"NilorNodes: Download failed: {e}")
+            if os.path.exists(model_path):
                 os.remove(model_path)
-                raise e
+            raise e
+
     return (
         relative_model_path,
         model_path,
@@ -42,6 +59,8 @@ def _get_model_path_and_download(model_name, model_type):
 
 
 class NilorModelLoader_Diffusion:
+    OUTPUT_NODE = True
+
     @classmethod
     def INPUT_TYPES(s):
         return {
@@ -52,15 +71,19 @@ class NilorModelLoader_Diffusion:
 
     @classmethod
     def VALIDATE_INPUTS(s, model_name):
-        # Pre-populate the folder_paths list to satisfy the validator
-        for model in diffusion_models:
-            relative_model_path = os.path.join(*model.split("/")[1:])
-            if relative_model_path not in folder_paths.get_filename_list(
-                "diffusion_models"
-            ):
-                folder_paths.get_filename_list("diffusion_models").append(
-                    relative_model_path
-                )
+        relative_model_path = os.path.join(*model_name.split("/")[1:])
+        model_type_folder = folder_paths.get_folder_paths("diffusion_models")[0]
+        model_path = os.path.join(model_type_folder, relative_model_path)
+
+        if not os.path.exists(model_path):
+            os.makedirs(os.path.dirname(model_path), exist_ok=True)
+            with open(model_path, "w") as f:
+                pass
+
+        model_list = folder_paths.get_filename_list("diffusion_models")
+        if relative_model_path not in model_list:
+            model_list.append(relative_model_path)
+
         return True
 
     RETURN_TYPES = (folder_paths.get_filename_list("diffusion_models"), "STRING")
@@ -74,6 +97,8 @@ class NilorModelLoader_Diffusion:
 
 
 class NilorModelLoader_Lora:
+    OUTPUT_NODE = True
+
     @classmethod
     def INPUT_TYPES(s):
         return {
@@ -84,10 +109,19 @@ class NilorModelLoader_Lora:
 
     @classmethod
     def VALIDATE_INPUTS(s, model_name):
-        for model in loras:
-            relative_model_path = os.path.join(*model.split("/")[1:])
-            if relative_model_path not in folder_paths.get_filename_list("loras"):
-                folder_paths.get_filename_list("loras").append(relative_model_path)
+        relative_model_path = os.path.join(*model_name.split("/")[1:])
+        model_type_folder = folder_paths.get_folder_paths("loras")[0]
+        model_path = os.path.join(model_type_folder, relative_model_path)
+
+        if not os.path.exists(model_path):
+            os.makedirs(os.path.dirname(model_path), exist_ok=True)
+            with open(model_path, "w") as f:
+                pass
+
+        model_list = folder_paths.get_filename_list("loras")
+        if relative_model_path not in model_list:
+            model_list.append(relative_model_path)
+
         return True
 
     RETURN_TYPES = (folder_paths.get_filename_list("loras"), "STRING")
@@ -101,6 +135,8 @@ class NilorModelLoader_Lora:
 
 
 class NilorModelLoader_Clip:
+    OUTPUT_NODE = True
+
     @classmethod
     def INPUT_TYPES(s):
         return {
@@ -111,10 +147,19 @@ class NilorModelLoader_Clip:
 
     @classmethod
     def VALIDATE_INPUTS(s, model_name):
-        for model in clip:
-            relative_model_path = os.path.join(*model.split("/")[1:])
-            if relative_model_path not in folder_paths.get_filename_list("clip"):
-                folder_paths.get_filename_list("clip").append(relative_model_path)
+        relative_model_path = os.path.join(*model_name.split("/")[1:])
+        model_type_folder = folder_paths.get_folder_paths("clip")[0]
+        model_path = os.path.join(model_type_folder, relative_model_path)
+
+        if not os.path.exists(model_path):
+            os.makedirs(os.path.dirname(model_path), exist_ok=True)
+            with open(model_path, "w") as f:
+                pass
+
+        model_list = folder_paths.get_filename_list("clip")
+        if relative_model_path not in model_list:
+            model_list.append(relative_model_path)
+
         return True
 
     RETURN_TYPES = (folder_paths.get_filename_list("clip"), "STRING")
@@ -128,6 +173,8 @@ class NilorModelLoader_Clip:
 
 
 class NilorModelLoader_TextEncoder:
+    OUTPUT_NODE = True
+
     @classmethod
     def INPUT_TYPES(s):
         return {
@@ -138,14 +185,19 @@ class NilorModelLoader_TextEncoder:
 
     @classmethod
     def VALIDATE_INPUTS(s, model_name):
-        for model in text_encoders:
-            relative_model_path = os.path.join(*model.split("/")[1:])
-            if relative_model_path not in folder_paths.get_filename_list(
-                "text_encoders"
-            ):
-                folder_paths.get_filename_list("text_encoders").append(
-                    relative_model_path
-                )
+        relative_model_path = os.path.join(*model_name.split("/")[1:])
+        model_type_folder = folder_paths.get_folder_paths("text_encoders")[0]
+        model_path = os.path.join(model_type_folder, relative_model_path)
+
+        if not os.path.exists(model_path):
+            os.makedirs(os.path.dirname(model_path), exist_ok=True)
+            with open(model_path, "w") as f:
+                pass
+
+        model_list = folder_paths.get_filename_list("text_encoders")
+        if relative_model_path not in model_list:
+            model_list.append(relative_model_path)
+
         return True
 
     RETURN_TYPES = (folder_paths.get_filename_list("text_encoders"), "STRING")
@@ -159,6 +211,8 @@ class NilorModelLoader_TextEncoder:
 
 
 class NilorModelLoader_VAE:
+    OUTPUT_NODE = True
+
     @classmethod
     def INPUT_TYPES(s):
         return {
@@ -169,10 +223,19 @@ class NilorModelLoader_VAE:
 
     @classmethod
     def VALIDATE_INPUTS(s, model_name):
-        for model in vae:
-            relative_model_path = os.path.join(*model.split("/")[1:])
-            if relative_model_path not in folder_paths.get_filename_list("vae"):
-                folder_paths.get_filename_list("vae").append(relative_model_path)
+        relative_model_path = os.path.join(*model_name.split("/")[1:])
+        model_type_folder = folder_paths.get_folder_paths("vae")[0]
+        model_path = os.path.join(model_type_folder, relative_model_path)
+
+        if not os.path.exists(model_path):
+            os.makedirs(os.path.dirname(model_path), exist_ok=True)
+            with open(model_path, "w") as f:
+                pass
+
+        model_list = folder_paths.get_filename_list("vae")
+        if relative_model_path not in model_list:
+            model_list.append(relative_model_path)
+
         return True
 
     RETURN_TYPES = (folder_paths.get_filename_list("vae"), "STRING")
