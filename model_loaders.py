@@ -15,7 +15,11 @@ diffusion_models, loras, clip, text_encoders, vae = get_hf_model_lists()
 
 def _get_model_path_and_download(model_name, model_type):
     """A helper function to centralize the download and path logic."""
-    relative_model_path = os.path.join(*model_name.split("/")[1:])
+    parts = model_name.split("/")
+    if len(parts) > 1:
+        relative_model_path = os.path.join(*parts[1:])
+    else:
+        relative_model_path = model_name
     model_type_folder = folder_paths.get_folder_paths(model_type)[0]
     model_path = os.path.join(model_type_folder, relative_model_path)
 
@@ -71,7 +75,12 @@ class NilorModelLoader_Diffusion:
 
     @classmethod
     def VALIDATE_INPUTS(s, model_name):
-        relative_model_path = os.path.join(*model_name.split("/")[1:])
+        parts = model_name.split("/")
+        if len(parts) > 1:
+            relative_model_path = os.path.join(*parts[1:])
+        else:
+            relative_model_path = model_name
+
         model_type_folder = folder_paths.get_folder_paths("diffusion_models")[0]
         model_path = os.path.join(model_type_folder, relative_model_path)
 
@@ -79,21 +88,29 @@ class NilorModelLoader_Diffusion:
             os.makedirs(os.path.dirname(model_path), exist_ok=True)
             with open(model_path, "w") as f:
                 pass
+            folder_paths.filename_list_cache.clear()
 
         model_list = folder_paths.get_filename_list("diffusion_models")
         if relative_model_path not in model_list:
-            model_list.append(relative_model_path)
+            # Forcefully update the cache
+            if "diffusion_models" in folder_paths.filename_list_cache:
+                folder_paths.filename_list_cache["diffusion_models"][0].append(
+                    relative_model_path
+                )
 
         return True
 
-    RETURN_TYPES = (folder_paths.get_filename_list("diffusion_models"), "STRING")
-    RETURN_NAMES = ("model_name", "model_path")
+    RETURN_TYPES = (folder_paths.get_filename_list("diffusion_models"),)
+    RETURN_NAMES = ("ckpt_name",)
     FUNCTION = "get_path"
     CATEGORY = "NilorNodes/model_loaders"
     DISPLAY_NAME = "👺 Nilor Get Diffusion Model"
 
     def get_path(self, model_name):
-        return _get_model_path_and_download(model_name, "diffusion_models")
+        relative_model_path, model_path = _get_model_path_and_download(
+            model_name, "diffusion_models"
+        )
+        return (relative_model_path,)
 
 
 class NilorModelLoader_Lora:
@@ -109,7 +126,12 @@ class NilorModelLoader_Lora:
 
     @classmethod
     def VALIDATE_INPUTS(s, model_name):
-        relative_model_path = os.path.join(*model_name.split("/")[1:])
+        parts = model_name.split("/")
+        if len(parts) > 1:
+            relative_model_path = os.path.join(*parts[1:])
+        else:
+            relative_model_path = model_name
+
         model_type_folder = folder_paths.get_folder_paths("loras")[0]
         model_path = os.path.join(model_type_folder, relative_model_path)
 
@@ -117,21 +139,27 @@ class NilorModelLoader_Lora:
             os.makedirs(os.path.dirname(model_path), exist_ok=True)
             with open(model_path, "w") as f:
                 pass
+            folder_paths.filename_list_cache.clear()
 
         model_list = folder_paths.get_filename_list("loras")
         if relative_model_path not in model_list:
-            model_list.append(relative_model_path)
+            # Forcefully update the cache
+            if "loras" in folder_paths.filename_list_cache:
+                folder_paths.filename_list_cache["loras"][0].append(relative_model_path)
 
         return True
 
-    RETURN_TYPES = (folder_paths.get_filename_list("loras"), "STRING")
-    RETURN_NAMES = ("model_name", "model_path")
+    RETURN_TYPES = (folder_paths.get_filename_list("loras"),)
+    RETURN_NAMES = ("lora_name",)
     FUNCTION = "get_path"
     CATEGORY = "NilorNodes/model_loaders"
     DISPLAY_NAME = "👺 Nilor Get Lora Model"
 
     def get_path(self, model_name):
-        return _get_model_path_and_download(model_name, "loras")
+        relative_model_path, model_path = _get_model_path_and_download(
+            model_name, "loras"
+        )
+        return (relative_model_path,)
 
 
 class NilorModelLoader_Clip:
@@ -147,7 +175,12 @@ class NilorModelLoader_Clip:
 
     @classmethod
     def VALIDATE_INPUTS(s, model_name):
-        relative_model_path = os.path.join(*model_name.split("/")[1:])
+        parts = model_name.split("/")
+        if len(parts) > 1:
+            relative_model_path = os.path.join(*parts[1:])
+        else:
+            relative_model_path = model_name
+
         model_type_folder = folder_paths.get_folder_paths("clip")[0]
         model_path = os.path.join(model_type_folder, relative_model_path)
 
@@ -155,21 +188,27 @@ class NilorModelLoader_Clip:
             os.makedirs(os.path.dirname(model_path), exist_ok=True)
             with open(model_path, "w") as f:
                 pass
+            folder_paths.filename_list_cache.clear()
 
         model_list = folder_paths.get_filename_list("clip")
         if relative_model_path not in model_list:
-            model_list.append(relative_model_path)
+            # Forcefully update the cache
+            if "clip" in folder_paths.filename_list_cache:
+                folder_paths.filename_list_cache["clip"][0].append(relative_model_path)
 
         return True
 
-    RETURN_TYPES = (folder_paths.get_filename_list("clip"), "STRING")
-    RETURN_NAMES = ("model_name", "model_path")
+    RETURN_TYPES = (folder_paths.get_filename_list("clip"),)
+    RETURN_NAMES = ("clip_name",)
     FUNCTION = "get_path"
     CATEGORY = "NilorNodes/model_loaders"
     DISPLAY_NAME = "👺 Nilor Get Clip Model"
 
     def get_path(self, model_name):
-        return _get_model_path_and_download(model_name, "clip")
+        relative_model_path, model_path = _get_model_path_and_download(
+            model_name, "clip"
+        )
+        return (relative_model_path,)
 
 
 class NilorModelLoader_TextEncoder:
@@ -185,7 +224,12 @@ class NilorModelLoader_TextEncoder:
 
     @classmethod
     def VALIDATE_INPUTS(s, model_name):
-        relative_model_path = os.path.join(*model_name.split("/")[1:])
+        parts = model_name.split("/")
+        if len(parts) > 1:
+            relative_model_path = os.path.join(*parts[1:])
+        else:
+            relative_model_path = model_name
+
         model_type_folder = folder_paths.get_folder_paths("text_encoders")[0]
         model_path = os.path.join(model_type_folder, relative_model_path)
 
@@ -193,21 +237,29 @@ class NilorModelLoader_TextEncoder:
             os.makedirs(os.path.dirname(model_path), exist_ok=True)
             with open(model_path, "w") as f:
                 pass
+            folder_paths.filename_list_cache.clear()
 
         model_list = folder_paths.get_filename_list("text_encoders")
         if relative_model_path not in model_list:
-            model_list.append(relative_model_path)
+            # Forcefully update the cache
+            if "text_encoders" in folder_paths.filename_list_cache:
+                folder_paths.filename_list_cache["text_encoders"][0].append(
+                    relative_model_path
+                )
 
         return True
 
-    RETURN_TYPES = (folder_paths.get_filename_list("text_encoders"), "STRING")
-    RETURN_NAMES = ("model_name", "model_path")
+    RETURN_TYPES = (folder_paths.get_filename_list("text_encoders"),)
+    RETURN_NAMES = ("clip_name",)
     FUNCTION = "get_path"
     CATEGORY = "NilorNodes/model_loaders"
     DISPLAY_NAME = "👺 Nilor Get Text Encoder Model"
 
     def get_path(self, model_name):
-        return _get_model_path_and_download(model_name, "text_encoders")
+        relative_model_path, model_path = _get_model_path_and_download(
+            model_name, "text_encoders"
+        )
+        return (relative_model_path,)
 
 
 class NilorModelLoader_VAE:
@@ -223,7 +275,12 @@ class NilorModelLoader_VAE:
 
     @classmethod
     def VALIDATE_INPUTS(s, model_name):
-        relative_model_path = os.path.join(*model_name.split("/")[1:])
+        parts = model_name.split("/")
+        if len(parts) > 1:
+            relative_model_path = os.path.join(*parts[1:])
+        else:
+            relative_model_path = model_name
+
         model_type_folder = folder_paths.get_folder_paths("vae")[0]
         model_path = os.path.join(model_type_folder, relative_model_path)
 
@@ -231,18 +288,24 @@ class NilorModelLoader_VAE:
             os.makedirs(os.path.dirname(model_path), exist_ok=True)
             with open(model_path, "w") as f:
                 pass
+            folder_paths.filename_list_cache.clear()
 
         model_list = folder_paths.get_filename_list("vae")
         if relative_model_path not in model_list:
-            model_list.append(relative_model_path)
+            # Forcefully update the cache
+            if "vae" in folder_paths.filename_list_cache:
+                folder_paths.filename_list_cache["vae"][0].append(relative_model_path)
 
         return True
 
-    RETURN_TYPES = (folder_paths.get_filename_list("vae"), "STRING")
-    RETURN_NAMES = ("model_name", "model_path")
+    RETURN_TYPES = (folder_paths.get_filename_list("vae"),)
+    RETURN_NAMES = ("vae_name",)
     FUNCTION = "get_path"
     CATEGORY = "NilorNodes/model_loaders"
     DISPLAY_NAME = "👺 Nilor Get VAE Model"
 
     def get_path(self, model_name):
-        return _get_model_path_and_download(model_name, "vae")
+        relative_model_path, model_path = _get_model_path_and_download(
+            model_name, "vae"
+        )
+        return (relative_model_path,)
