@@ -840,6 +840,122 @@ class NilorNFractionsOfInt:
             raise ValueError(f"Unknown type: {type}")
 
 
+class NilorWanTileResolution:
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "input_width": (
+                    "INT",
+                    {"default": 1920, "min": 16, "max": BIGMAX, "step": 1},
+                ),
+                "input_height": (
+                    "INT",
+                    {"default": 1080, "min": 16, "max": BIGMAX, "step": 1},
+                ),
+                "target_width": (
+                    "INT",
+                    {"default": 3840, "min": 16, "max": BIGMAX, "step": 1},
+                ),
+                "target_height": (
+                    "INT",
+                    {"default": 2160, "min": 16, "max": BIGMAX, "step": 1},
+                ),
+            }
+        }
+
+    RETURN_TYPES = ("INT", "INT")
+    RETURN_NAMES = ("tile_width", "tile_height")
+
+    FUNCTION = "compute_tile_resolution"
+    CATEGORY = category + subcategories["utilities"]
+
+    MIN_TILE_DIM = 384
+    MAX_TILE_DIM = 1794
+    MAX_TILE_AREA = 1024 * 1024
+
+    @staticmethod
+    def _clamp(value, minimum, maximum):
+        return max(minimum, min(value, maximum))
+
+    def compute_tile_resolution(
+        self, input_width, input_height, target_width, target_height
+    ):
+        """
+        Compute (Wt, Ht) tile size (multiples of 16) within [384, 1024],
+        emphasising aspect-ratio fidelity to Wa/Ha while staying within the
+        allowed range. Among options with comparable aspect error, prefer tiles
+        that do not hit clamped bounds, then maximise area and width.
+
+        Assumes Wa, Ha are multiples of 16.
+        """
+
+        dims = {
+            "input_width": input_width,
+            "input_height": input_height,
+            "target_width": target_width,
+            "target_height": target_height,
+        }
+
+        for name, value in dims.items():
+            if value <= 0:
+                raise ValueError(f"{name} must be a positive integer.")
+
+        if input_width % 16 != 0 or input_height % 16 != 0:
+            raise ValueError("input_width and input_height must be multiples of 16.")
+
+        if target_width < self.MIN_TILE_DIM or target_height < self.MIN_TILE_DIM:
+            raise ValueError(
+                "target_width and target_height must be at least the minimum tile size."
+            )
+
+        min_blocks = self.MIN_TILE_DIM // 16
+        max_blocks = self.MAX_TILE_DIM // 16
+
+        max_width_blocks = min(max_blocks, target_width // 16)
+        max_height_blocks = min(max_blocks, target_height // 16)
+
+        if max_width_blocks < min_blocks or max_height_blocks < min_blocks:
+            raise ValueError(
+                "Target dimensions do not allow a tile within the supported range."
+            )
+
+        aspect_ratio = input_width / input_height
+
+        best_score = None
+        best_dimensions = None
+
+        for height_blocks in range(min_blocks, max_height_blocks + 1):
+            width_blocks = round(aspect_ratio * height_blocks)
+            width_blocks = self._clamp(width_blocks, min_blocks, max_width_blocks)
+
+            width_px = width_blocks * 16
+            height_px = height_blocks * 16
+
+            area = width_px * height_px
+            if area > self.MAX_TILE_AREA:
+                continue
+            aspect_error = abs((width_blocks / height_blocks) - aspect_ratio)
+
+            width_hits_bound = int(width_blocks in (min_blocks, max_width_blocks))
+            height_hits_bound = int(height_blocks in (min_blocks, max_height_blocks))
+            bound_penalty = width_hits_bound + height_hits_bound
+
+            candidate = (-aspect_error, -bound_penalty, area, width_px)
+
+            if best_score is None or candidate > best_score:
+                best_score = candidate
+                best_dimensions = (width_px, height_px)
+
+        if best_dimensions is None:
+            raise RuntimeError("Failed to determine a suitable tile resolution.")
+
+        return best_dimensions
+
+
 class NilorCategorizeString:
     def __init__(self):
         pass
@@ -1209,6 +1325,7 @@ NODE_CLASS_MAPPINGS = {
     "Nilor n Fractions of Int": NilorNFractionsOfInt,
     "Nilor Categorize String": NilorCategorizeString,
     "Nilor Random String": NilorRandomString,
+    "Nilor Wan Tile Resolution": NilorWanTileResolution,
     "Nilor Extract Filename from Path": NilorExtractFilenameFromPath,
     "Nilor Load Image By Index": NilorLoadImageByIndex,
     "Nilor Blur Analysis": NilorBlurAnalysis,
@@ -1219,9 +1336,9 @@ NODE_CLASS_MAPPINGS = {
 NODE_DISPLAY_NAME_MAPPINGS = {
     "Nilor Interpolated Float List": "👺 Interpolated Float List",
     "Nilor One Minus Float List": "👺 One Minus Float List",
-    "Nilor Remap Float List": "👺 Nilor Remap Float List",
-    "Nilor Remap Float List Auto Input": "👺 Nilor Remap Float List Auto Input",
-    "Nilor Inverse Map Float List": "👺 Nilor Inverse Map Float List",
+    "Nilor Remap Float List": "👺 Remap Float List",
+    "Nilor Remap Float List Auto Input": "👺 Remap Float List Auto Input",
+    "Nilor Inverse Map Float List": "👺 Inverse Map Float List",
     "Nilor Int To List Of Bools": "👺 Int To List Of Bools",
     "Nilor List of Ints": "👺 List of Ints",
     "Nilor Count Images In Directory": "👺 Count Images In Directory",
@@ -1229,13 +1346,14 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "Nilor Save Video To HF Dataset": "👺 Save Video To HF Dataset",
     "Nilor Select Index From List": "👺 Select Index From List",
     "Nilor Save EXR Arbitrary": "👺 Save EXR Arbitrary",
-    "Nilor Shuffle Image Batch": "👺 Nilor Shuffle Image Batch",
-    "Nilor Repeat & Trim Image Batch": "👺 Nilor Repeat & Trim Image Batch",
-    "Nilor Repeat, Shuffle, & Trim Image Batch": "👺 Nilor Repeat, Shuffle, & Trim Image Batch",
-    "Nilor Output Filename String": "👺 Nilor Output Filename String",
-    "Nilor n Fractions of Int": "👺 Nilor n Fractions of Int",
+    "Nilor Shuffle Image Batch": "👺 Shuffle Image Batch",
+    "Nilor Repeat & Trim Image Batch": "👺 Repeat & Trim Image Batch",
+    "Nilor Repeat, Shuffle, & Trim Image Batch": "👺 Repeat, Shuffle, & Trim Image Batch",
+    "Nilor Output Filename String": "👺 Output Filename String",
+    "Nilor n Fractions of Int": "👺 n Fractions of Int",
     "Nilor Categorize String": "👺 Categorize String",
     "Nilor Random String": "👺 Random String",
+    "Nilor Wan Tile Resolution": "👺 Wan Tile Resolution",
     "Nilor Extract Filename from Path": "👺 Extract Filename from Path",
     "Nilor Load Image By Index": "👺 Load Image By Index",
     "Nilor Blur Analysis": "👺 Blur Analysis",
