@@ -168,7 +168,9 @@ class NilorRemapFloatList:
     ):
         # Avoid division by zero
         if max_input - min_input == 0:
-            raise ValueError("max_input and min_input cannot be the same value.")
+            raise ValueError(
+                "[🛑] Nilor-Nodes (RemapFloatList): max_input and min_input cannot be the same value."
+            )
 
         scale = (max_output - min_output) / (max_input - min_input)
         return ([min_output + (x - min_input) * scale for x in list_of_floats],)
@@ -223,7 +225,9 @@ class NilorInverseMapFloatList:
 
     def inverse_map_float_list(self, list_of_floats):
         if not list_of_floats:
-            raise ValueError("The input list_of_floats cannot be empty.")
+            raise ValueError(
+                "[🛑] Nilor-Nodes (InverseMapFloatList): The input list_of_floats cannot be empty."
+            )
 
         min_input = min(list_of_floats)
         max_input = max(list_of_floats)
@@ -319,7 +323,9 @@ class NilorCountImagesInDirectory:
 
     def count_images_in_directory(self, directory):
         if not os.path.isdir(directory):
-            raise FileNotFoundError(f"Directory '{directory} cannot be found.")
+            raise FileNotFoundError(
+                f"[🛑] Nilor-Nodes (NilorCountImagesInDirectory): Directory '{directory} cannot be found."
+            )
 
         list_dir = []
         list_dir = os.listdir(directory)
@@ -367,7 +373,9 @@ class NilorSelectIndexFromList:
 
         # Ensure the index is within bounds
         if index < 0 or index >= len(actual_list):
-            raise ValueError("Index is outside the bounds of the array.")
+            raise ValueError(
+                "[🛑] Nilor-Nodes (SelectIndexFromList): Index is outside the bounds of the array."
+            )
 
         # Returns the value at the given index
         return (actual_list[index],)
@@ -405,7 +413,9 @@ class NilorSaveEXRArbitrary:
         self, channels=None, filename_prefix="output", prompt=None, extra_pnginfo=None
     ):
 
-        logging.info("ℹ️ Nilor-Nodes (SaveEXRArbitrary): Running save_exr_arbitrary")
+        logging.info(
+            "ℹ️\u2009 Nilor-Nodes (SaveEXRArbitrary): Running save_exr_arbitrary"
+        )
         # print(f"channels: {channels}")
         # print(f"filename_prefix: {filename_prefix}")
 
@@ -418,7 +428,7 @@ class NilorSaveEXRArbitrary:
             actual_channels[0]
         except TypeError:
             logging.error(
-                "🛑 Nilor-Nodes (SaveEXRArbitrary): actual_channels is not subscriptable"
+                "🛑\u2009 Nilor-Nodes (SaveEXRArbitrary): actual_channels is not subscriptable"
             )
             return
 
@@ -456,7 +466,9 @@ class NilorSaveEXRArbitrary:
             height, width = image_channels[0].shape[-2:]
             for tensor in image_channels:
                 if tensor.shape[-2:] != (height, width):
-                    raise ValueError("All input tensors must have the same dimensions")
+                    raise ValueError(
+                        "[🛑] Nilor-Nodes (SaveEXRArbitrary): All input tensors must have the same dimensions"
+                    )
 
             # Channel naming
             default_names = ["R", "G", "B", "A"] + [
@@ -511,7 +523,7 @@ class NilorSaveEXRArbitrary:
             )
         except Exception as e:
             logging.error(
-                f"🛑 Nilor-Nodes (SaveEXRArbitrary): Failed to write EXR file: {e}"
+                f"🛑\u2009 Nilor-Nodes (SaveEXRArbitrary): Failed to write EXR file: {e}"
             )
 
 
@@ -630,12 +642,14 @@ class NilorShuffleImageBatch:
 
     def _check_image_dimensions(self, images):
         if images.shape[0] == 0:
-            raise ValueError("Input images tensor is empty.")
+            raise ValueError(
+                "[🛑] Nilor-Nodes (ShuffleImageBatch): Input images tensor is empty."
+            )
 
         # All images in the batch should have the same dimensions
         if len(images.shape) != 4:
             raise ValueError(
-                f"Expected 4D tensor (batch, channels, height, width), got shape {images.shape}"
+                f"[🛑] Nilor-Nodes (ShuffleImageBatch): Expected 4D tensor (batch, channels, height, width), got shape {images.shape}"
             )
 
     def shuffle_image_batch(self, images: torch.Tensor, seed):
@@ -675,12 +689,14 @@ class NilorRepeatTrimImageBatch:
 
     def _check_image_dimensions(self, images):
         if images.shape[0] == 0:
-            raise ValueError("Input images tensor is empty.")
+            raise ValueError(
+                "[🛑] Nilor-Nodes (RepeatTrimImageBatch): Input images tensor is empty."
+            )
 
         # All images in the batch should have the same dimensions
         if len(images.shape) != 4:
             raise ValueError(
-                f"Expected 4D tensor (batch, channels, height, width), got shape {images.shape}"
+                f"[🛑] Nilor-Nodes (RepeatTrimImageBatch): Expected 4D tensor (batch, channels, height, width), got shape {images.shape}"
             )
 
     def repeat_trim_image_batch(self, images: torch.Tensor, count):
@@ -718,12 +734,14 @@ class NilorRepeatShuffleTrimImageBatch:
 
     def _check_image_dimensions(self, images):
         if images.shape[0] == 0:
-            raise ValueError("Input images tensor is empty.")
+            raise ValueError(
+                "[🛑] Nilor-Nodes (RepeatShuffleTrimImageBatch): Input images tensor is empty."
+            )
 
         # All images in the batch should have the same dimensions
         if len(images.shape) != 4:
             raise ValueError(
-                f"Expected 4D tensor (batch, channels, height, width), got shape {images.shape}"
+                f"[🛑] Nilor-Nodes (RepeatShuffleTrimImageBatch): Expected 4D tensor (batch, channels, height, width), got shape {images.shape}"
             )
 
     def repeat_shuffle_trim_image_batch(self, images: torch.Tensor, seed, count):
@@ -790,14 +808,14 @@ class NilorOutputFilenameString:
         if unique_id is not None and extra_pnginfo is not None:
             if not isinstance(extra_pnginfo, list):
                 logging.error(
-                    "🛑 Nilor-Nodes (OutputFilenameString): extra_pnginfo is not a list"
+                    "🛑\u2009 Nilor-Nodes (OutputFilenameString): extra_pnginfo is not a list"
                 )
             elif (
                 not isinstance(extra_pnginfo[0], dict)
                 or "workflow" not in extra_pnginfo[0]
             ):
                 logging.error(
-                    "🛑 Nilor-Nodes (OutputFilenameString): extra_pnginfo[0] is not a dict or missing 'workflow' key"
+                    "🛑\u2009 Nilor-Nodes (OutputFilenameString): extra_pnginfo[0] is not a dict or missing 'workflow' key"
                 )
             else:
                 workflow = extra_pnginfo[0]["workflow"]
@@ -849,7 +867,9 @@ class NilorNFractionsOfInt:
         elif type == "start + end":
             return ([i * numerator // (denominator - 1) for i in range(denominator)],)
         else:
-            raise ValueError(f"Unknown type: {type}")
+            raise ValueError(
+                f"[🛑] Nilor-Nodes (NilorNFractionsOfInt): Unknown type: {type}"
+            )
 
 
 class NilorWanTileResolution:
@@ -928,14 +948,18 @@ class NilorWanTileResolution:
 
         for name, value in dims.items():
             if value <= 0:
-                raise ValueError(f"{name} must be a positive integer.")
+                raise ValueError(
+                    f"[🛑] Nilor-Nodes (NilorWanTileResolution): {name} must be a positive integer."
+                )
 
         if input_width % 16 != 0 or input_height % 16 != 0:
-            raise ValueError("input_width and input_height must be multiples of 16.")
+            raise ValueError(
+                "[🛑] Nilor-Nodes (NilorWanTileResolution): input_width and input_height must be multiples of 16."
+            )
 
         if target_width < self.MIN_TILE_DIM or target_height < self.MIN_TILE_DIM:
             raise ValueError(
-                "target_width and target_height must be at least the minimum tile size."
+                "[🛑] Nilor-Nodes (NilorWanTileResolution): target_width and target_height must be at least the minimum tile size."
             )
 
         min_blocks = self.MIN_TILE_DIM // 16
@@ -946,7 +970,7 @@ class NilorWanTileResolution:
 
         if max_width_blocks < min_blocks or max_height_blocks < min_blocks:
             raise ValueError(
-                "Target dimensions do not allow a tile within the supported range."
+                "[🛑] Nilor-Nodes (NilorWanTileResolution): Target dimensions do not allow a tile within the supported range."
             )
 
         aspect_ratio = input_width / input_height
@@ -991,7 +1015,9 @@ class NilorWanTileResolution:
 
         if best_dimensions is None:
             # If no suitable tile resolution was found, raise an error
-            raise RuntimeError("Failed to determine a suitable tile resolution.")
+            raise RuntimeError(
+                "[🛑] Nilor-Nodes (NilorWanTileResolution): Failed to determine a suitable tile resolution."
+            )
 
         return best_dimensions
 
@@ -1115,7 +1141,9 @@ class NilorRandomString:
             if item.strip()
         ]
         if not options:
-            raise ValueError("No valid choices provided.")
+            raise ValueError(
+                "[🛑] Nilor-Nodes (NilorRandomString): No valid choices provided."
+            )
 
         # Limit to the first 'max_options' entries if there are more options
         if len(options) > max_options:
@@ -1157,7 +1185,9 @@ class NilorLoadImageByIndex:
 
     def load_image_by_index(self, image_directory, seed, sort_mode, reverse_sort):
         if not os.path.exists(image_directory):
-            raise FileNotFoundError(f"Image directory {image_directory} does not exist")
+            raise FileNotFoundError(
+                f"[🛑] Nilor-Nodes (NilorLoadImageByIndex): Image directory {image_directory} does not exist"
+            )
 
         # Get list of image files
         files = []
@@ -1169,7 +1199,9 @@ class NilorLoadImageByIndex:
                 files.append(file_path)
 
         if not files:
-            raise ValueError(f"No image files found in {image_directory}")
+            raise ValueError(
+                f"[🛑] Nilor-Nodes (NilorLoadImageByIndex): No image files found in {image_directory}"
+            )
 
         # Sort files based on selected mode
         if sort_mode == "filename":
@@ -1219,7 +1251,9 @@ class NilorExtractFilenameFromPath:
     def extract_filename(self, filepath):
         # Ensure the input is a valid path
         if not filepath:
-            raise ValueError("Filepath cannot be empty.")
+            raise ValueError(
+                "[🛑] Nilor-Nodes (ExtractFilenameFromPath): Filepath cannot be empty."
+            )
 
         path = Path(filepath)
 
@@ -1255,7 +1289,7 @@ class NilorBlurAnalysis:
         # Ensure images is a 4D tensor.
         if images.dim() != 4:
             raise ValueError(
-                "Input images must be a 4D tensor (batch, channels/height, height/width, width/channels)"
+                "[🛑] Nilor-Nodes (BlurAnalysis): Input images must be a 4D tensor (batch, channels/height, height/width, width/channels)"
             )
 
         # Detect if using NCHW or NHWC.
@@ -1264,7 +1298,7 @@ class NilorBlurAnalysis:
                 images = images.permute(0, 3, 1, 2)
             else:
                 raise ValueError(
-                    "Cannot determine image format (expected channel to be 1 or 3)."
+                    "[🛑] Nilor-Nodes (BlurAnalysis): Cannot determine image format (expected channel to be 1 or 3)."
                 )
 
         output_images = []

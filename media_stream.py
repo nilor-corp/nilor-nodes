@@ -69,7 +69,7 @@ class MediaStreamInput:
         input_name: str = "default_input",
     ):
         logging.info(
-            f"ℹ️ Nilor-Nodes: MediaStreamInput: Downloading from {presigned_download_url} for input '{input_name}' with format '{format}'"
+            f"ℹ️\u2009 Nilor-Nodes: MediaStreamInput: Downloading from {presigned_download_url} for input '{input_name}' with format '{format}'"
         )
         try:
             # Two-phase download for batches: manifest first, then assets
@@ -79,7 +79,7 @@ class MediaStreamInput:
                 manifest = manifest_response.json()
 
                 logging.info(
-                    f"ℹ️ Nilor-Nodes: Processing manifest for '{manifest.get('input_name')}' with {len(manifest.get('files', []))} assets."
+                    f"ℹ️\u2009 Nilor-Nodes: Processing manifest for '{manifest.get('input_name')}' with {len(manifest.get('files', []))} assets."
                 )
 
                 # Sort files by sequence number to ensure correct order
@@ -96,7 +96,7 @@ class MediaStreamInput:
                         asset_responses.append(resp.content)
                     except requests.RequestException as e:
                         logging.error(
-                            f"🛑 Nilor-Nodes: Failed to download asset {file_info.get('filename')}: {e}"
+                            f"🛑\u2009 Nilor-Nodes: Failed to download asset {file_info.get('filename')}: {e}"
                         )
                         raise  # Re-raise to fail the entire process
 
@@ -114,23 +114,23 @@ class MediaStreamInput:
             else:
                 # Should not happen if UI choices are respected
                 raise ValueError(
-                    f"Unsupported format '{format}' for single media download."
+                    f"[🛑] Nilor-Nodes (MediaStreamInput): Unsupported format '{format}' for single media download."
                 )
 
         except requests.RequestException as e:
             logging.error(
-                f"🛑 Nilor-Nodes (MediaStreamInput): Failed to download file: {e}"
+                f"🛑\u2009 Nilor-Nodes (MediaStreamInput): Failed to download file: {e}"
             )
             return (None,)
         except Exception as e:
             logging.error(
-                f"🛑 Nilor-Nodes (MediaStreamInput): Failed to process media: {e}"
+                f"🛑\u2009 Nilor-Nodes (MediaStreamInput): Failed to process media: {e}"
             )
             return (None,)
 
     def _process_image_batch(self, image_bytes_list):
         logging.info(
-            f"ℹ️ Nilor-Nodes (MediaStreamInput): Processing image batch with {len(image_bytes_list)} images..."
+            f"ℹ️\u2009 Nilor-Nodes (MediaStreamInput): Processing image batch with {len(image_bytes_list)} images..."
         )
         output_images = []
 
@@ -153,7 +153,7 @@ class MediaStreamInput:
         return (images_tensor,)
 
     def _process_image(self, image_bytes):
-        logging.info("ℹ️ Nilor-Nodes (MediaStreamInput): Processing as image...")
+        logging.info("ℹ️\u2009 Nilor-Nodes (MediaStreamInput): Processing as image...")
         image_pil = Image.open(io.BytesIO(image_bytes))
 
         # Ensure image is in RGB
@@ -166,7 +166,7 @@ class MediaStreamInput:
         return (image_tensor,)
 
     def _process_video(self, video_bytes):
-        logging.info("ℹ️ Nilor-Nodes (MediaStreamInput): Processing as video...")
+        logging.info("ℹ️\u2009 Nilor-Nodes (MediaStreamInput): Processing as video...")
         frames = []
         with imageio.get_reader(io.BytesIO(video_bytes), format="mp4") as reader:
             for frame in reader:
@@ -178,7 +178,7 @@ class MediaStreamInput:
 
         if not frames:
             raise ValueError(
-                "🛑 Nilor-Nodes (MediaStreamInput): No frames could be read from the video."
+                "[🛑] Nilor-Nodes (MediaStreamInput): No frames could be read from the video."
             )
 
         # Stack frames into a single tensor (batch of images)
@@ -245,7 +245,9 @@ class MediaStreamOutput:
         extra_pnginfo=None,
     ):
         if not job_id:
-            raise ValueError("job_id is a required input for MediaStreamOutput.")
+            raise ValueError(
+                "[🛑] Nilor-Nodes (MediaStreamOutput): job_id is a required input for MediaStreamOutput."
+            )
 
         # The `output_object_keys` is received as a string representation of a dictionary.
         # We must parse it back into a dictionary.
@@ -255,7 +257,7 @@ class MediaStreamOutput:
             final_outputs_dict = json.loads(output_object_keys.replace("'", '"'))
         except Exception as e:
             logging.error(
-                f"🛑 Nilor-Nodes (MediaStreamOutput): FATAL -- Could not parse output_object_keys from string: {output_object_keys}. Error: {e}"
+                f"🛑\u2009 Nilor-Nodes (MediaStreamOutput): FATAL -- Could not parse output_object_keys from string: {output_object_keys}. Error: {e}"
             )
             final_outputs_dict = {}  # Send empty dict on failure.
 
@@ -270,7 +272,7 @@ class MediaStreamOutput:
         output_key_for_this_node = final_outputs_dict.get(output_name)
         if not output_key_for_this_node:
             logging.error(
-                f"🛑 Nilor-Nodes (MediaStreamOutput): FATAL -- Could not find object key for output name '{output_name}' in output_object_keys."
+                f"🛑\u2009 Nilor-Nodes (MediaStreamOutput): FATAL -- Could not find object key for output name '{output_name}' in output_object_keys."
             )
             # Send an empty dictionary to signal failure.
             final_outputs_for_sqs = {}
@@ -294,7 +296,7 @@ class MediaStreamOutput:
                 region_name=os.getenv("AWS_DEFAULT_REGION", "us-east-1"),
             )
             logging.info(
-                f"ℹ️ Nilor-Nodes (MediaStreamOutput): Sending completion message for job {job_id} to queue: {job_completions_queue_url}"
+                f"ℹ️\u2009 Nilor-Nodes (MediaStreamOutput): Sending completion message for job {job_id} to queue: {job_completions_queue_url}"
             )
             sqs_client.send_message(
                 QueueUrl=job_completions_queue_url,
@@ -305,14 +307,16 @@ class MediaStreamOutput:
             )
         except Exception as e:
             logging.error(
-                f"🛑 Nilor-Nodes (MediaStreamOutput): Failed to send completion message to SQS: {e}"
+                f"🛑\u2009 Nilor-Nodes (MediaStreamOutput): Failed to send completion message to SQS: {e}"
             )
             raise  # Re-raise to fail the ComfyUI job
 
         return {"ui": {"images": []}}
 
     def _upload_image(self, image_tensor, url):
-        logging.info("ℹ️ Nilor-Nodes (MediaStreamOutput): Uploading as PNG image...")
+        logging.info(
+            "ℹ️\u2009 Nilor-Nodes (MediaStreamOutput): Uploading as PNG image..."
+        )
         i = 255.0 * image_tensor.cpu().numpy()
         img_pil = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
 
@@ -324,7 +328,7 @@ class MediaStreamOutput:
 
     def _upload_video(self, image_batch_tensor, url, framerate):
         logging.info(
-            f"ℹ️ Nilor-Nodes (MediaStreamOutput): Uploading as MP4 video. Frame count: {len(image_batch_tensor)}"
+            f"ℹ️\u2009 Nilor-Nodes (MediaStreamOutput): Uploading as MP4 video. Frame count: {len(image_batch_tensor)}"
         )
         frames = []
         for image_tensor in image_batch_tensor:
@@ -341,7 +345,7 @@ class MediaStreamOutput:
     def _perform_upload(self, buffer, url, content_type):
         try:
             logging.info(
-                f"ℹ️ Nilor-Nodes (MediaStreamOutput): Uploading to {url} with Content-Type: {content_type}"
+                f"ℹ️\u2009 Nilor-Nodes (MediaStreamOutput): Uploading to {url} with Content-Type: {content_type}"
             )
             headers = {"Content-Type": content_type}
             response = requests.put(
@@ -351,12 +355,12 @@ class MediaStreamOutput:
             logging.info("✅ Nilor-Nodes (MediaStreamOutput): Upload successful.")
         except requests.RequestException as e:
             logging.error(
-                f"🛑 Nilor-Nodes (MediaStreamOutput): Failed to upload media: {e}"
+                f"🛑\u2009 Nilor-Nodes (MediaStreamOutput): Failed to upload media: {e}"
             )
             raise
         except Exception as e:
             logging.error(
-                f"🛑 Nilor-Nodes (MediaStreamOutput): Failed to process and upload media: {e}"
+                f"🛑\u2009 Nilor-Nodes (MediaStreamOutput): Failed to process and upload media: {e}"
             )
             raise
 
