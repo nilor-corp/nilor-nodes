@@ -864,6 +864,10 @@ class NilorWanTileResolution:
                     "INT",
                     {"default": 2160, "min": 16, "max": BIGMAX, "step": 1},
                 ),
+                "size_preference": (
+                    ["largest", "smallest"],
+                    {"default": "largest"},
+                ),
             }
         }
 
@@ -882,13 +886,14 @@ class NilorWanTileResolution:
         return max(minimum, min(value, maximum))
 
     def compute_tile_resolution(
-        self, input_width, input_height, target_width, target_height
+        self, input_width, input_height, target_width, target_height, size_preference="largest"
     ):
         """
         Compute (Wt, Ht) tile size (multiples of 16) within [384, 1024],
         emphasising aspect-ratio fidelity to Wa/Ha while staying within the
         allowed range. Among options with comparable aspect error, prefer tiles
-        that do not hit clamped bounds, then maximise area and width.
+        that do not hit clamped bounds, then maximise area and width (or
+        minimise area and width if size_preference == "smallest").
 
         Assumes Wa, Ha are multiples of 16.
         """
@@ -944,7 +949,14 @@ class NilorWanTileResolution:
             height_hits_bound = int(height_blocks in (min_blocks, max_height_blocks))
             bound_penalty = width_hits_bound + height_hits_bound
 
-            candidate = (-aspect_error, -bound_penalty, area, width_px)
+            if size_preference == "smallest":
+                area_score = -area
+                width_score = -width_px
+            else:
+                area_score = area
+                width_score = width_px
+
+            candidate = (-aspect_error, -bound_penalty, area_score, width_score)
 
             if best_score is None or candidate > best_score:
                 best_score = candidate
