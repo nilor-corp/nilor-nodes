@@ -16,6 +16,7 @@ import torch
 import builtins
 from pathlib import Path
 import cv2
+import warnings
 from .utils import pil2tensor, tensor2pil
 
 BIGMIN = -(2**53 - 1)
@@ -879,6 +880,7 @@ class NilorWanTileResolution:
 
     MIN_TILE_DIM = 384
     MAX_TILE_DIM = 1794
+    MIN_TILE_AREA = 384 * 384
     MAX_TILE_AREA = 1024 * 1024
 
     @staticmethod
@@ -886,14 +888,22 @@ class NilorWanTileResolution:
         return max(minimum, min(value, maximum))
 
     def compute_tile_resolution(
-        self, input_width, input_height, target_width, target_height, size_preference="largest"
+        self,
+        input_width,
+        input_height,
+        target_width,
+        target_height,
+        size_preference="largest",
     ):
         """
-        Compute (Wt, Ht) tile size (multiples of 16) within [384, 1024],
-        emphasising aspect-ratio fidelity to Wa/Ha while staying within the
-        allowed range. Among options with comparable aspect error, prefer tiles
-        that do not hit clamped bounds, then maximise area and width (or
-        minimise area and width if size_preference == "smallest").
+        Compute (Wt, Ht) tile size (multiples of 16) within
+        [MIN_TILE_DIM, MAX_TILE_DIM] while keeping area between
+        [MIN_TILE_AREA, MAX_TILE_AREA]. Emphasise aspect-ratio fidelity to
+        Wa/Ha while staying within the allowed range.
+
+        Among options with comparable aspect error, prefer tiles that do
+        not hit clamped bounds, then maximise area and width (or minimise both if
+        size_preference == "smallest").
 
         Assumes Wa, Ha are multiples of 16.
         """
@@ -941,14 +951,18 @@ class NilorWanTileResolution:
             height_px = height_blocks * 16
 
             area = width_px * height_px
-            if area > self.MAX_TILE_AREA:
+            if area < self.MIN_TILE_AREA or area > self.MAX_TILE_AREA:
+                # Skip tiles that are too small or too large
                 continue
             aspect_error = abs((width_blocks / height_blocks) - aspect_ratio)
 
             width_hits_bound = int(width_blocks in (min_blocks, max_width_blocks))
             height_hits_bound = int(height_blocks in (min_blocks, max_height_blocks))
+
+            # Penalise tiles that hit the clamped bounds
             bound_penalty = width_hits_bound + height_hits_bound
 
+            # Score tiles based on size preference
             if size_preference == "smallest":
                 area_score = -area
                 width_score = -width_px
@@ -956,13 +970,16 @@ class NilorWanTileResolution:
                 area_score = area
                 width_score = width_px
 
+            # Combine scores
             candidate = (-aspect_error, -bound_penalty, area_score, width_score)
 
             if best_score is None or candidate > best_score:
+                # Update best score and dimensions if this candidate is better
                 best_score = candidate
                 best_dimensions = (width_px, height_px)
 
         if best_dimensions is None:
+            # If no suitable tile resolution was found, raise an error
             raise RuntimeError("Failed to determine a suitable tile resolution.")
 
         return best_dimensions
