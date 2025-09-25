@@ -57,7 +57,7 @@ logging.basicConfig(
 class WorkerConsumer:
     def __init__(self):
         self.session = get_session()
-        self.prompt_id_to_job_id_map = {}
+        self.prompt_id_to_content_id_map = {}
         self.sent_running_status_prompts = set()
         self.jobs_queue_url = None
         self.status_updates_queue_url = None
@@ -129,15 +129,19 @@ class WorkerConsumer:
                                 # Use the first progress event as a signal that the job is running.
                                 if (
                                     event_type in ["progress", "progress_state"]
-                                    and prompt_id in self.prompt_id_to_job_id_map
+                                    and prompt_id in self.prompt_id_to_content_id_map
                                     and prompt_id
                                     not in self.sent_running_status_prompts
                                 ):
-                                    job_id = self.prompt_id_to_job_id_map[prompt_id]
+                                    content_id = self.prompt_id_to_content_id_map[
+                                        prompt_id
+                                    ]
                                     logging.info(
-                                        f"ℹ️\u2009 Nilor-Nodes: Execution started for prompt_id {prompt_id} (job_id: {job_id}) via '{event_type}' event. Sending 'running' status."
+                                        f"ℹ️\u2009 Nilor-Nodes: Execution started for prompt_id {prompt_id} (content_id: {content_id}) via '{event_type}' event. Sending 'running' status."
                                     )
-                                    await self._send_status_update(job_id, "running")
+                                    await self._send_status_update(
+                                        content_id, "running"
+                                    )
                                     self.sent_running_status_prompts.add(prompt_id)
 
                                 # Handle execution errors
@@ -145,8 +149,8 @@ class WorkerConsumer:
                                     logging.error(
                                         f"🛑\u2009 Nilor-Nodes: Received execution error for prompt_id {prompt_id}: {data}"
                                     )
-                                    if prompt_id in self.prompt_id_to_job_id_map:
-                                        self.prompt_id_to_job_id_map.pop(prompt_id)
+                                    if prompt_id in self.prompt_id_to_content_id_map:
+                                        self.prompt_id_to_content_id_map.pop(prompt_id)
                                     self.sent_running_status_prompts.discard(prompt_id)
 
                                 # Log successful execution
@@ -154,8 +158,8 @@ class WorkerConsumer:
                                     logging.info(
                                         f"✅ Nilor-Nodes: Prompt {prompt_id} executed successfully according to websocket event. Final node is responsible for sending completion message."
                                     )
-                                    if prompt_id in self.prompt_id_to_job_id_map:
-                                        self.prompt_id_to_job_id_map.pop(prompt_id)
+                                    if prompt_id in self.prompt_id_to_content_id_map:
+                                        self.prompt_id_to_content_id_map.pop(prompt_id)
                                     self.sent_running_status_prompts.discard(prompt_id)
 
                                 elif event_type not in ["progress", "progress_state"]:
@@ -289,19 +293,17 @@ class WorkerConsumer:
             else:
                 job_payload = body
 
-            job_id = job_payload.get(
-                "client_id"
-            )  # The workflow payload uses 'client_id' for the job_id
+            content_id = job_payload.get("content_id")
 
             # Validate that the payload has the required keys before submitting.
-            if not job_id or "prompt" not in job_payload:
+            if not content_id or "prompt" not in job_payload:
                 logging.error(
-                    f"🛑\u2009 Nilor-Nodes: Invalid message format: missing 'client_id' or 'prompt'. Payload: {job_payload}"
+                    f"🛑\u2009 Nilor-Nodes: Invalid message format: missing 'content_id' or 'prompt'. Payload: {job_payload}"
                 )
                 return
 
             # Submit to ComfyUI
-            await self._submit_job_to_comfyui(job_id, job_payload)
+            await self._submit_job_to_comfyui(content_id, job_payload)
 
         except Exception as e:
             logging.error(
@@ -310,7 +312,7 @@ class WorkerConsumer:
             # Re-raise to prevent deletion from queue if we want SQS to handle retry
             raise
 
-    async def _submit_job_to_comfyui(self, job_id, workflow_data):
+    async def _submit_job_to_comfyui(self, content_id, workflow_data):
         """Submits a single job to the ComfyUI API."""
         try:
             async with aiohttp.ClientSession() as session:
@@ -323,7 +325,7 @@ class WorkerConsumer:
                     logging.info(
                         f"✅ Nilor-Nodes: Successfully submitted job to ComfyUI. Prompt ID: {prompt_id}"
                     )
-                    self.prompt_id_to_job_id_map[prompt_id] = job_id
+                    self.prompt_id_to_content_id_map[prompt_id] = content_id
 
             # No need to delete here, the consume_loop handles message deletion
         except aiohttp.ClientError as e:
@@ -340,9 +342,9 @@ class WorkerConsumer:
                 exc_info=True,
             )
 
-    async def _send_status_update(self, job_id, status):
+    async def _send_status_update(self, content_id, status):
         try:
-            message_body = json.dumps({"job_id": job_id, "status": status})
+            message_body = json.dumps({"content_id": content_id, "status": status})
             async with self.session.create_client(
                 "sqs",
                 region_name=AWS_DEFAULT_REGION,
@@ -354,11 +356,11 @@ class WorkerConsumer:
                     QueueUrl=self.status_updates_queue_url, MessageBody=message_body
                 )
             logging.info(
-                f"✅ Nilor-Nodes: Sent status update for job {job_id}: {status}"
+                f"✅ Nilor-Nodes: Sent status update for content {content_id}: {status}"
             )
         except Exception as e:
             logging.error(
-                f"🛑\u2009 Nilor-Nodes: Failed to send status update for job {job_id}: {e}",
+                f"🛑\u2009 Nilor-Nodes: Failed to send status update for content {content_id}: {e}",
                 exc_info=True,
             )
 

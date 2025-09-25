@@ -203,7 +203,7 @@ class MediaStreamOutput:
                 "images": ("IMAGE",),
                 "format": (["png", "mp4"],),
                 "framerate": ("INT", {"default": 24, "min": 1, "max": 240, "step": 1}),
-                "job_id": (
+                "content_id": (
                     "STRING",
                     {"default": "<auto-filled by system>", "multiline": False},
                 ),
@@ -235,7 +235,7 @@ class MediaStreamOutput:
         self,
         images,
         format,
-        job_id,
+        content_id,
         presigned_upload_url,
         job_completions_queue_url,
         output_object_keys,
@@ -244,9 +244,9 @@ class MediaStreamOutput:
         prompt=None,
         extra_pnginfo=None,
     ):
-        if not job_id:
+        if not content_id:
             raise ValueError(
-                "[🛑] Nilor-Nodes (MediaStreamOutput): job_id is a required input for MediaStreamOutput."
+                "[🛑] Nilor-Nodes (MediaStreamOutput): content_id is a required input for MediaStreamOutput."
             )
 
         # The `output_object_keys` is received as a string representation of a dictionary.
@@ -281,7 +281,7 @@ class MediaStreamOutput:
 
         # After upload, send the filtered dictionary of outputs to the SQS queue.
         completion_message = {
-            "job_id": job_id,
+            "content_id": content_id,
             "status": "completed",
             "outputs": final_outputs_for_sqs,
         }
@@ -296,7 +296,7 @@ class MediaStreamOutput:
                 region_name=os.getenv("AWS_DEFAULT_REGION", "us-east-1"),
             )
             logging.info(
-                f"ℹ️\u2009 Nilor-Nodes (MediaStreamOutput): Sending completion message for job {job_id} to queue: {job_completions_queue_url}"
+                f"ℹ️\u2009 Nilor-Nodes (MediaStreamOutput): Sending completion message for content {content_id} to queue: {job_completions_queue_url}"
             )
             sqs_client.send_message(
                 QueueUrl=job_completions_queue_url,
