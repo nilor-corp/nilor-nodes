@@ -322,7 +322,3 @@ async def consume_jobs():
     """Entry point function to be called in a background thread."""
     consumer = WorkerConsumer()
     await consumer.consume_loop()
-
-
-if __name__ == "__main__":
-    asyncio.run(consume_jobs())
