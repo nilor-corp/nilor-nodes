@@ -18,6 +18,7 @@ from pathlib import Path
 import cv2
 import warnings
 from .utils import pil2tensor, tensor2pil
+import logging
 
 BIGMIN = -(2**53 - 1)
 BIGMAX = 2**53 - 1
@@ -404,7 +405,7 @@ class NilorSaveEXRArbitrary:
         self, channels=None, filename_prefix="output", prompt=None, extra_pnginfo=None
     ):
 
-        print("Running save_exr_arbitrary")
+        logging.info("ℹ️ Nilor-Nodes (SaveEXRArbitrary): Running save_exr_arbitrary")
         # print(f"channels: {channels}")
         # print(f"filename_prefix: {filename_prefix}")
 
@@ -416,7 +417,9 @@ class NilorSaveEXRArbitrary:
         try:
             actual_channels[0]
         except TypeError:
-            print("actual_channels is not subscriptable")
+            logging.error(
+                "🛑 Nilor-Nodes (SaveEXRArbitrary): actual_channels is not subscriptable"
+            )
             return
 
         # File path handling
@@ -503,9 +506,13 @@ class NilorSaveEXRArbitrary:
             exr_file.writePixels(channel_data)
             exr_file.close()
 
-            print(f"EXR file saved successfully to {writepath}")
+            logging.info(
+                f"✅ Nilor-Nodes (SaveEXRArbitrary): EXR file saved successfully to {writepath}"
+            )
         except Exception as e:
-            print(f"Failed to write EXR file: {e}")
+            logging.error(
+                f"🛑 Nilor-Nodes (SaveEXRArbitrary): Failed to write EXR file: {e}"
+            )
 
 
 class NilorSaveVideoToHFDataset:
@@ -782,12 +789,16 @@ class NilorOutputFilenameString:
 
         if unique_id is not None and extra_pnginfo is not None:
             if not isinstance(extra_pnginfo, list):
-                print("Error: extra_pnginfo is not a list")
+                logging.error(
+                    "🛑 Nilor-Nodes (OutputFilenameString): extra_pnginfo is not a list"
+                )
             elif (
                 not isinstance(extra_pnginfo[0], dict)
                 or "workflow" not in extra_pnginfo[0]
             ):
-                print("Error: extra_pnginfo[0] is not a dict or missing 'workflow' key")
+                logging.error(
+                    "🛑 Nilor-Nodes (OutputFilenameString): extra_pnginfo[0] is not a dict or missing 'workflow' key"
+                )
             else:
                 workflow = extra_pnginfo[0]["workflow"]
                 node = next(
