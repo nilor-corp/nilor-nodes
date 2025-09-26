@@ -59,6 +59,7 @@ class WorkerConsumer:
         self.session = get_session()
         self.prompt_id_to_content_id_map = {}
         self.sent_running_status_prompts = set()
+        self.content_context_by_content_id = {}
         self.jobs_queue_url = None
         self.status_updates_queue_url = None
         self.http_session = None
@@ -135,11 +136,22 @@ class WorkerConsumer:
                                     content_id = self.prompt_id_to_content_id_map[
                                         prompt_id
                                     ]
+                                    ctx = self.content_context_by_content_id.get(
+                                        content_id, {}
+                                    )
+                                    policy = ctx.get("status_policy") or {}
+                                    running_status = policy.get(
+                                        "running_status", "running"
+                                    )
                                     logging.info(
-                                        f"ℹ️\u2009 Nilor-Nodes (worker_consumer): Execution started for prompt_id {prompt_id} (content_id: {content_id}) via '{event_type}' event. Sending 'running' status."
+                                        f"ℹ️\u2009 Nilor-Nodes (worker_consumer): Execution started for prompt_id {prompt_id} (content_id: {content_id}) via '{event_type}' event. Sending '{running_status}' status."
                                     )
                                     await self._send_status_update(
-                                        content_id, "running"
+                                        content_id,
+                                        running_status,
+                                        ctx.get("venue"),
+                                        ctx.get("canvas"),
+                                        ctx.get("scene"),
                                     )
                                     self.sent_running_status_prompts.add(prompt_id)
 
@@ -149,7 +161,31 @@ class WorkerConsumer:
                                         f"🛑\u2009 Nilor-Nodes (worker_consumer): Received execution error for prompt_id {prompt_id}: {data}"
                                     )
                                     if prompt_id in self.prompt_id_to_content_id_map:
-                                        self.prompt_id_to_content_id_map.pop(prompt_id)
+                                        content_id = (
+                                            self.prompt_id_to_content_id_map.pop(
+                                                prompt_id
+                                            )
+                                        )
+                                        ctx = self.content_context_by_content_id.get(
+                                            content_id, {}
+                                        )
+                                        policy = ctx.get("status_policy") or {}
+                                        fail_status = policy.get(
+                                            "fail_status", "failed"
+                                        )
+                                        try:
+                                            await self._send_status_update(
+                                                content_id,
+                                                fail_status,
+                                                ctx.get("venue"),
+                                                ctx.get("canvas"),
+                                                ctx.get("scene"),
+                                            )
+                                        except Exception:
+                                            pass
+                                        self.content_context_by_content_id.pop(
+                                            content_id, None
+                                        )
                                     self.sent_running_status_prompts.discard(prompt_id)
 
                                 # Log successful execution
@@ -158,7 +194,14 @@ class WorkerConsumer:
                                         f"✅ Nilor-Nodes (worker_consumer): Prompt {prompt_id} executed successfully according to websocket event. Final node is responsible for sending completion message."
                                     )
                                     if prompt_id in self.prompt_id_to_content_id_map:
-                                        self.prompt_id_to_content_id_map.pop(prompt_id)
+                                        content_id = (
+                                            self.prompt_id_to_content_id_map.pop(
+                                                prompt_id
+                                            )
+                                        )
+                                        self.content_context_by_content_id.pop(
+                                            content_id, None
+                                        )
                                     self.sent_running_status_prompts.discard(prompt_id)
 
                                 elif event_type not in ["progress", "progress_state"]:
@@ -312,6 +355,17 @@ class WorkerConsumer:
             # Submit to ComfyUI
             await self._submit_job_to_comfyui(content_id, job_payload)
 
+            # Cache context for subsequent status updates
+            try:
+                self.content_context_by_content_id[content_id] = {
+                    "venue": job_payload.get("venue"),
+                    "canvas": job_payload.get("canvas"),
+                    "scene": job_payload.get("scene"),
+                    "status_policy": job_payload.get("status_policy") or {},
+                }
+            except Exception:
+                self.content_context_by_content_id[content_id] = {}
+
         except Exception as e:
             logging.error(
                 f"🛑\u2009 Nilor-Nodes (worker_consumer): An unexpected error occurred while processing message: {e}. It will be retried."
@@ -349,9 +403,18 @@ class WorkerConsumer:
                 exc_info=True,
             )
 
-    async def _send_status_update(self, content_id, status):
+    async def _send_status_update(
+        self, content_id, status, venue=None, canvas=None, scene=None
+    ):
         try:
-            message_body = json.dumps({"content_id": content_id, "status": status})
+            body = {"content_id": content_id, "status": status}
+            if venue is not None:
+                body["venue"] = venue
+            if canvas is not None:
+                body["canvas"] = canvas
+            if scene is not None:
+                body["scene"] = scene
+            message_body = json.dumps(body)
             async with self.session.create_client(
                 "sqs",
                 region_name=AWS_DEFAULT_REGION,

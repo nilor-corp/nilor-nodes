@@ -26,6 +26,9 @@ app.registerExtension({
             // Hide system inputs by default
             hideWidgets(node, [
                 "content_id",
+                "venue",
+                "canvas",
+                "scene",
                 "presigned_upload_url",
                 "job_completions_queue_url",
                 "output_object_keys"

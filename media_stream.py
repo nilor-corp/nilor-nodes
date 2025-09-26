@@ -207,6 +207,18 @@ class MediaStreamOutput:
                     "STRING",
                     {"default": "<auto-filled by system>", "multiline": False},
                 ),
+                "venue": (
+                    "STRING",
+                    {"default": "<auto-filled by system>", "multiline": False},
+                ),
+                "canvas": (
+                    "STRING",
+                    {"default": "<auto-filled by system>", "multiline": False},
+                ),
+                "scene": (
+                    "STRING",
+                    {"default": "<auto-filled by system>", "multiline": False},
+                ),
                 "presigned_upload_url": (
                     "STRING",
                     {"multiline": True, "default": "<auto-filled by system>"},
@@ -236,6 +248,9 @@ class MediaStreamOutput:
         images,
         format,
         content_id,
+        venue,
+        canvas,
+        scene,
         presigned_upload_url,
         job_completions_queue_url,
         output_object_keys,
@@ -283,6 +298,9 @@ class MediaStreamOutput:
         completion_message = {
             "content_id": content_id,
             "status": "completed",
+            "venue": venue,
+            "canvas": canvas,
+            "scene": scene,
             "outputs": final_outputs_for_sqs,
         }
 
