@@ -2,6 +2,10 @@
 
 A collection of utility nodes for ComfyUI focusing on list manipulation, batch operations, and advanced I/O functionality.
 
+## Prerequisites
+
+- `comfyui-kjnodes` custom_nodes repo
+
 ## 🏭 Generators
 
 <details>
