@@ -238,7 +238,8 @@ class MediaStreamOutput:
             },
         }
 
-    RETURN_TYPES = ()
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("uploaded_url",)
     FUNCTION = "upload_and_notify"
     OUTPUT_NODE = True
     CATEGORY = category + subcategories["streaming"]
@@ -329,7 +330,7 @@ class MediaStreamOutput:
             )
             raise  # Re-raise to fail the ComfyUI job
 
-        return {"ui": {"images": []}}
+        return {"ui": {"images": []}, "result": (presigned_upload_url,)}
 
     def _upload_image(self, image_tensor, url):
         logging.info(
