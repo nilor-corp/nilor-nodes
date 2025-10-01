@@ -21,6 +21,19 @@ from .utils import pil2tensor, tensor2pil
 import logging
 from comfy.utils import common_upscale
 from comfy import model_management
+import sys
+from os.path import dirname, join
+
+# Attempt to import ImagePadKJ from comfyui-kjnodes if available
+_kj_nodes_path = join(dirname(__file__), "..", "comfyui-kjnodes", "nodes")
+if _kj_nodes_path not in sys.path:
+    sys.path.append(_kj_nodes_path)
+try:
+    from image_nodes import ImagePadKJ  # type: ignore
+except Exception as _e:
+    logging.warning(
+        f"⚠️  Nilor-Nodes: Could not import ImagePadKJ from comfyui-kjnodes ( {_kj_nodes_path} ): {_e}"
+    )
 
 BIGMIN = -(2**53 - 1)
 BIGMAX = 2**53 - 1
