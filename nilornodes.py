@@ -1591,8 +1591,8 @@ Resizes images with optional aspect preservation, padding/cropping, and sub-batc
                 bytes_per_elem = image.element_size()
                 est_total_bytes = B * height * width * C * bytes_per_elem
                 est_mb = est_total_bytes / (1024 * 1024)
-                print(
-                    f"[NilorImageResizeV2] estimated output ~{est_mb:.2f} MB; batching {per_batch}/{B}"
+                logging.info(
+                    f"ℹ️\u2009 Nilor-Nodes (NilorImageResizeV2) Estimated output ~{est_mb:.2f} MB; batching {per_batch}/{B}"
                 )
             except:
                 pass
@@ -1718,8 +1718,8 @@ Resizes images with optional aspect preservation, padding/cropping, and sub-batc
                         sub_out_mask.cpu() if sub_out_mask is not None else None
                     )
                 try:
-                    print(
-                        f"[NilorImageResizeV2] batch {current_batch}/{total_batches} · images {end_idx}/{B}"
+                    logging.info(
+                        f"ℹ️\u2009 Nilor-Nodes (NilorImageResizeV2) Batch {current_batch}/{total_batches} · images {end_idx}/{B}"
                     )
                 except:
                     pass
@@ -1728,6 +1728,8 @@ Resizes images with optional aspect preservation, padding/cropping, and sub-batc
                 out_mask = torch.cat([m for m in mask_chunks if m is not None], dim=0)
             else:
                 out_mask = None
+
+        logging.info(f"✅\u2009 Nilor-Nodes (NilorImageResizeV2) Batches complete.")
 
         return (
             out_image.cpu(),
