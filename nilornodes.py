@@ -1592,7 +1592,7 @@ Resizes images with optional aspect preservation, padding/cropping, and sub-batc
                 est_total_bytes = B * height * width * C * bytes_per_elem
                 est_mb = est_total_bytes / (1024 * 1024)
                 logging.info(
-                    f"ℹ️\u2009 Nilor-Nodes (NilorImageResizeV2) Estimated output ~{est_mb:.2f} MB; batching {per_batch}/{B}"
+                    f"ℹ️\u2009 Nilor-Nodes (NilorImageResizeV2) Estimated output ~{est_mb:.2f} MB."
                 )
             except:
                 pass
@@ -1729,7 +1729,7 @@ Resizes images with optional aspect preservation, padding/cropping, and sub-batc
             else:
                 out_mask = None
 
-        logging.info(f"✅\u2009 Nilor-Nodes (NilorImageResizeV2) Batches complete.")
+        logging.info(f"✅\u2009 Nilor-Nodes (NilorImageResizeV2) All batches complete.")
 
         return (
             out_image.cpu(),
