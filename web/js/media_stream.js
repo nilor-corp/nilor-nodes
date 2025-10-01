@@ -19,45 +19,95 @@ function hideWidgets(node, widgetNames) {
     });
 }
 
-app.registerExtension({
-    name: "comfy.nilor-nodes.mediaStream",
-    nodeCreated(node) {
-        if (node.comfyClass === "MediaStreamOutput") {
-            // Hide system inputs by default
-            hideWidgets(node, [
-                "content_id",
-                "venue",
-                "canvas",
-                "scene",
-                "presigned_upload_url",
-                "job_completions_queue_url",
-                "output_object_keys"
-            ]);
+function setupMediaStreamOutput(node) {
+    // Hide system inputs by default
+    hideWidgets(node, [
+        "content_id",
+        "venue",
+        "canvas",
+        "scene",
+        "presigned_upload_url",
+        "job_completions_queue_url",
+        "output_object_keys",
+    ]);
 
-            const formatWidget = node.widgets.find((w) => w.name === "format");
+    const formatWidget = node.widgets.find((w) => w.name === "format");
+    if (!formatWidget) return;
 
-            // Initial toggle for framerate based on the default format value
-            toggleFramerateWidget(node, formatWidget.value === "mp4");
+    // Apply current value
+    toggleFramerateWidget(node, formatWidget.value === "mp4");
+    try {
+        const size = node.computeSize();
+        node.onResize?.(size);
+        app.graph?.setDirtyCanvas(true, true);
+    } catch (_) {}
 
-            // Store original callback to chain it
-            const originalCallback = formatWidget.callback;
-
-            formatWidget.callback = function (value) {
-                toggleFramerateWidget(node, value === "mp4");
-
-                // Recalculate node size after toggling widgets
+    // Chain the widget callback once
+    if (!formatWidget.__nilorPatched) {
+        const originalCallback = formatWidget.callback;
+        formatWidget.callback = function (value) {
+            toggleFramerateWidget(node, value === "mp4");
+            try {
                 const size = node.computeSize();
                 node.onResize?.(size);
-                
-                if (originalCallback) {
-                    return originalCallback.apply(this, arguments);
-                }
+                app.graph?.setDirtyCanvas(true, true);
+            } catch (_) {}
+            if (originalCallback) return originalCallback.apply(this, arguments);
+        };
+        formatWidget.__nilorPatched = true;
+    }
+}
+
+function setupMediaStreamInput(node) {
+    hideWidgets(node, ["presigned_download_url"]);
+}
+
+app.registerExtension({
+    name: "comfy.nilor-nodes.mediaStream",
+
+    async beforeRegisterNodeDef(nodeType, nodeData, appInstance) {
+        if (nodeData?.name === "MediaStreamOutput") {
+            const origAdded = nodeType.prototype.onAdded;
+            nodeType.prototype.onAdded = function () {
+                if (typeof origAdded === "function") origAdded.apply(this, arguments);
+                try { setTimeout(() => setupMediaStreamOutput(this), 0); } catch (_) {}
+            };
+
+            const origConfigure = nodeType.prototype.onConfigure;
+            nodeType.prototype.onConfigure = function () {
+                if (typeof origConfigure === "function") origConfigure.apply(this, arguments);
+                try { setTimeout(() => setupMediaStreamOutput(this), 0); } catch (_) {}
             };
         }
 
-        if (node.comfyClass === "MediaStreamInput") {
-            // Hide system inputs by default
-            hideWidgets(node, ["presigned_download_url"]);
+        if (nodeData?.name === "MediaStreamInput") {
+            const origAddedIn = nodeType.prototype.onAdded;
+            nodeType.prototype.onAdded = function () {
+                if (typeof origAddedIn === "function") origAddedIn.apply(this, arguments);
+                try { setTimeout(() => setupMediaStreamInput(this), 0); } catch (_) {}
+            };
+
+            const origConfigureIn = nodeType.prototype.onConfigure;
+            nodeType.prototype.onConfigure = function () {
+                if (typeof origConfigureIn === "function") origConfigureIn.apply(this, arguments);
+                try { setTimeout(() => setupMediaStreamInput(this), 0); } catch (_) {}
+            };
         }
+    },
+
+    afterConfigureGraph(graph) {
+        try {
+            (graph?._nodes || graph?.nodes || []).forEach((n) => {
+                if (n?.comfyClass === "MediaStreamOutput") setupMediaStreamOutput(n);
+                if (n?.comfyClass === "MediaStreamInput") setupMediaStreamInput(n);
+            });
+        } catch (e) {
+            console.warn("nilor-media-stream afterConfigureGraph error", e);
+        }
+    },
+
+    nodeCreated(node) {
+        if (node.comfyClass === "MediaStreamOutput") setupMediaStreamOutput(node);
+        if (node.comfyClass === "MediaStreamInput") setupMediaStreamInput(node);
     },
 });
