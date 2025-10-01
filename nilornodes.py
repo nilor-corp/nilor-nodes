@@ -32,7 +32,7 @@ try:
     from image_nodes import ImagePadKJ  # type: ignore
 except Exception as _e:
     logging.warning(
-        f"⚠️  Nilor-Nodes: Could not import ImagePadKJ from comfyui-kjnodes ( {_kj_nodes_path} ): {_e}"
+        f"⚠️\u2009 Nilor-Nodes (nilornodes): Could not import ImagePadKJ from comfyui-kjnodes ({_kj_nodes_path}): {_e}"
     )
 
 BIGMIN = -(2**53 - 1)
@@ -184,7 +184,7 @@ class NilorRemapFloatList:
         # Avoid division by zero
         if max_input - min_input == 0:
             raise ValueError(
-                "[🛑] Nilor-Nodes (RemapFloatList): max_input and min_input cannot be the same value."
+                "🛑\u2009 Nilor-Nodes (RemapFloatList): max_input and min_input cannot be the same value."
             )
 
         scale = (max_output - min_output) / (max_input - min_input)
@@ -241,7 +241,7 @@ class NilorInverseMapFloatList:
     def inverse_map_float_list(self, list_of_floats):
         if not list_of_floats:
             raise ValueError(
-                "[🛑] Nilor-Nodes (InverseMapFloatList): The input list_of_floats cannot be empty."
+                "🛑\u2009 Nilor-Nodes (InverseMapFloatList): The input list_of_floats cannot be empty."
             )
 
         min_input = min(list_of_floats)
@@ -339,7 +339,7 @@ class NilorCountImagesInDirectory:
     def count_images_in_directory(self, directory):
         if not os.path.isdir(directory):
             raise FileNotFoundError(
-                f"[🛑] Nilor-Nodes (NilorCountImagesInDirectory): Directory '{directory} cannot be found."
+                f"🛑\u2009 Nilor-Nodes (NilorCountImagesInDirectory): Directory '{directory}' cannot be found."
             )
 
         list_dir = []
@@ -389,7 +389,7 @@ class NilorSelectIndexFromList:
         # Ensure the index is within bounds
         if index < 0 or index >= len(actual_list):
             raise ValueError(
-                "[🛑] Nilor-Nodes (SelectIndexFromList): Index is outside the bounds of the array."
+                "🛑\u2009 Nilor-Nodes (SelectIndexFromList): Index is outside the bounds of the array."
             )
 
         # Returns the value at the given index
@@ -482,7 +482,7 @@ class NilorSaveEXRArbitrary:
             for tensor in image_channels:
                 if tensor.shape[-2:] != (height, width):
                     raise ValueError(
-                        "[🛑] Nilor-Nodes (SaveEXRArbitrary): All input tensors must have the same dimensions"
+                        "🛑\u2009 Nilor-Nodes (SaveEXRArbitrary): All input tensors must have the same dimensions"
                     )
 
             # Channel naming
@@ -534,7 +534,7 @@ class NilorSaveEXRArbitrary:
             exr_file.close()
 
             logging.info(
-                f"✅ Nilor-Nodes (SaveEXRArbitrary): EXR file saved successfully to {writepath}"
+                f"✅\u2009 Nilor-Nodes (SaveEXRArbitrary): EXR file saved successfully to {writepath}"
             )
         except Exception as e:
             logging.error(
@@ -658,13 +658,13 @@ class NilorShuffleImageBatch:
     def _check_image_dimensions(self, images):
         if images.shape[0] == 0:
             raise ValueError(
-                "[🛑] Nilor-Nodes (ShuffleImageBatch): Input images tensor is empty."
+                "🛑\u2009 Nilor-Nodes (ShuffleImageBatch): Input images tensor is empty."
             )
 
         # All images in the batch should have the same dimensions
         if len(images.shape) != 4:
             raise ValueError(
-                f"[🛑] Nilor-Nodes (ShuffleImageBatch): Expected 4D tensor (batch, channels, height, width), got shape {images.shape}"
+                f"🛑\u2009 Nilor-Nodes (ShuffleImageBatch): Expected 4D tensor (batch, channels, height, width), got shape {images.shape}"
             )
 
     def shuffle_image_batch(self, images: torch.Tensor, seed):
@@ -705,13 +705,13 @@ class NilorRepeatTrimImageBatch:
     def _check_image_dimensions(self, images):
         if images.shape[0] == 0:
             raise ValueError(
-                "[🛑] Nilor-Nodes (RepeatTrimImageBatch): Input images tensor is empty."
+                "🛑\u2009 Nilor-Nodes (RepeatTrimImageBatch): Input images tensor is empty."
             )
 
         # All images in the batch should have the same dimensions
         if len(images.shape) != 4:
             raise ValueError(
-                f"[🛑] Nilor-Nodes (RepeatTrimImageBatch): Expected 4D tensor (batch, channels, height, width), got shape {images.shape}"
+                f"🛑\u2009 Nilor-Nodes (RepeatTrimImageBatch): Expected 4D tensor (batch, channels, height, width), got shape {images.shape}"
             )
 
     def repeat_trim_image_batch(self, images: torch.Tensor, count):
@@ -750,13 +750,13 @@ class NilorRepeatShuffleTrimImageBatch:
     def _check_image_dimensions(self, images):
         if images.shape[0] == 0:
             raise ValueError(
-                "[🛑] Nilor-Nodes (RepeatShuffleTrimImageBatch): Input images tensor is empty."
+                "🛑\u2009 Nilor-Nodes (RepeatShuffleTrimImageBatch): Input images tensor is empty."
             )
 
         # All images in the batch should have the same dimensions
         if len(images.shape) != 4:
             raise ValueError(
-                f"[🛑] Nilor-Nodes (RepeatShuffleTrimImageBatch): Expected 4D tensor (batch, channels, height, width), got shape {images.shape}"
+                f"🛑\u2009 Nilor-Nodes (RepeatShuffleTrimImageBatch): Expected 4D tensor (batch, channels, height, width), got shape {images.shape}"
             )
 
     def repeat_shuffle_trim_image_batch(self, images: torch.Tensor, seed, count):
@@ -883,7 +883,7 @@ class NilorNFractionsOfInt:
             return ([i * numerator // (denominator - 1) for i in range(denominator)],)
         else:
             raise ValueError(
-                f"[🛑] Nilor-Nodes (NilorNFractionsOfInt): Unknown type: {type}"
+                f"🛑\u2009 Nilor-Nodes (NilorNFractionsOfInt): Unknown type: {type}"
             )
 
 
@@ -964,17 +964,17 @@ class NilorWanTileResolution:
         for name, value in dims.items():
             if value <= 0:
                 raise ValueError(
-                    f"[🛑] Nilor-Nodes (NilorWanTileResolution): {name} must be a positive integer."
+                    f"🛑\u2009 Nilor-Nodes (NilorWanTileResolution): {name} must be a positive integer."
                 )
 
         if input_width % 16 != 0 or input_height % 16 != 0:
             raise ValueError(
-                "[🛑] Nilor-Nodes (NilorWanTileResolution): input_width and input_height must be multiples of 16."
+                "🛑\u2009 Nilor-Nodes (NilorWanTileResolution): input_width and input_height must be multiples of 16."
             )
 
         if target_width < self.MIN_TILE_DIM or target_height < self.MIN_TILE_DIM:
             raise ValueError(
-                "[🛑] Nilor-Nodes (NilorWanTileResolution): target_width and target_height must be at least the minimum tile size."
+                "🛑\u2009 Nilor-Nodes (NilorWanTileResolution): target_width and target_height must be at least the minimum tile size."
             )
 
         min_blocks = self.MIN_TILE_DIM // 16
@@ -985,7 +985,7 @@ class NilorWanTileResolution:
 
         if max_width_blocks < min_blocks or max_height_blocks < min_blocks:
             raise ValueError(
-                "[🛑] Nilor-Nodes (NilorWanTileResolution): Target dimensions do not allow a tile within the supported range."
+                "🛑\u2009 Nilor-Nodes (NilorWanTileResolution): Target dimensions do not allow a tile within the supported range."
             )
 
         aspect_ratio = input_width / input_height
@@ -1031,7 +1031,7 @@ class NilorWanTileResolution:
         if best_dimensions is None:
             # If no suitable tile resolution was found, raise an error
             raise RuntimeError(
-                "[🛑] Nilor-Nodes (NilorWanTileResolution): Failed to determine a suitable tile resolution."
+                "🛑\u2009 Nilor-Nodes (NilorWanTileResolution): Failed to determine a suitable tile resolution."
             )
 
         return best_dimensions
@@ -1057,15 +1057,15 @@ class NilorWanFrameTrim:
     def _validate_images(self, images):
         if not isinstance(images, torch.Tensor):
             raise TypeError(
-                "[🛑] Nilor-Nodes (WanFrameTrim): images must be a torch.Tensor."
+                "🛑\u2009 Nilor-Nodes (WanFrameTrim): images must be a torch.Tensor."
             )
         if images.dim() != 4:
             raise ValueError(
-                f"[🛑] Nilor-Nodes (WanFrameTrim): Expected 4D tensor (batch, height, width, channels), got shape {tuple(images.shape)}"
+                f"🛑\u2009 Nilor-Nodes (WanFrameTrim): Expected 4D tensor (batch, height, width, channels), got shape {tuple(images.shape)}"
             )
         if images.shape[0] == 0:
             raise ValueError(
-                "[🛑] Nilor-Nodes (WanFrameTrim): Input images tensor is empty."
+                "🛑\u2009 Nilor-Nodes (WanFrameTrim): Input images tensor is empty."
             )
 
     def trim_to_wan_count(self, images: torch.Tensor):
@@ -1077,7 +1077,7 @@ class NilorWanFrameTrim:
 
         if wan_count <= 0:
             raise ValueError(
-                "[🛑] Nilor-Nodes (WanFrameTrim): Unable to compute a valid 4N+1 frame count from input."
+                "🛑\u2009 Nilor-Nodes (WanFrameTrim): Unable to compute a valid 4N+1 frame count from input."
             )
 
         trimmed = images[:wan_count]
@@ -1204,7 +1204,7 @@ class NilorRandomString:
         ]
         if not options:
             raise ValueError(
-                "[🛑] Nilor-Nodes (NilorRandomString): No valid choices provided."
+                "🛑\u2009 Nilor-Nodes (NilorRandomString): No valid choices provided."
             )
 
         # Limit to the first 'max_options' entries if there are more options
@@ -1248,7 +1248,7 @@ class NilorLoadImageByIndex:
     def load_image_by_index(self, image_directory, seed, sort_mode, reverse_sort):
         if not os.path.exists(image_directory):
             raise FileNotFoundError(
-                f"[🛑] Nilor-Nodes (NilorLoadImageByIndex): Image directory {image_directory} does not exist"
+                f"🛑\u2009 Nilor-Nodes (NilorLoadImageByIndex): Image directory {image_directory} does not exist"
             )
 
         # Get list of image files
@@ -1262,7 +1262,7 @@ class NilorLoadImageByIndex:
 
         if not files:
             raise ValueError(
-                f"[🛑] Nilor-Nodes (NilorLoadImageByIndex): No image files found in {image_directory}"
+                f"🛑\u2009 Nilor-Nodes (NilorLoadImageByIndex): No image files found in {image_directory}"
             )
 
         # Sort files based on selected mode
@@ -1314,7 +1314,7 @@ class NilorExtractFilenameFromPath:
         # Ensure the input is a valid path
         if not filepath:
             raise ValueError(
-                "[🛑] Nilor-Nodes (ExtractFilenameFromPath): Filepath cannot be empty."
+                "🛑\u2009 Nilor-Nodes (ExtractFilenameFromPath): Filepath cannot be empty."
             )
 
         path = Path(filepath)
@@ -1351,7 +1351,7 @@ class NilorBlurAnalysis:
         # Ensure images is a 4D tensor.
         if images.dim() != 4:
             raise ValueError(
-                "[🛑] Nilor-Nodes (BlurAnalysis): Input images must be a 4D tensor (batch, channels/height, height/width, width/channels)"
+                "🛑\u2009 Nilor-Nodes (BlurAnalysis): Input images must be a 4D tensor (batch, channels/height, height/width, width/channels)"
             )
 
         # Detect if using NCHW or NHWC.
@@ -1360,7 +1360,7 @@ class NilorBlurAnalysis:
                 images = images.permute(0, 3, 1, 2)
             else:
                 raise ValueError(
-                    "[🛑] Nilor-Nodes (BlurAnalysis): Cannot determine image format (expected channel to be 1 or 3)."
+                    "🛑\u2009 Nilor-Nodes (BlurAnalysis): Cannot determine image format (expected channel to be 1 or 3)."
                 )
 
         output_images = []
@@ -1517,7 +1517,9 @@ Resizes images with optional aspect preservation, padding/cropping, and sub-batc
 
         if device == "gpu":
             if upscale_method == "lanczos":
-                raise Exception("Lanczos is not supported on the GPU")
+                raise Exception(
+                    "🛑\u2009 Nilor-Nodes (NilorImageResizeV2): Lanczos is not supported on the GPU"
+                )
             device = model_management.get_torch_device()
         else:
             device = torch.device("cpu")
