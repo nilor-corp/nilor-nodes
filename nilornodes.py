@@ -1024,6 +1024,53 @@ class NilorWanTileResolution:
         return best_dimensions
 
 
+class NilorWanFrameTrim:
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "images": ("IMAGE",),
+            },
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("images",)
+    FUNCTION = "trim_to_wan_count"
+    CATEGORY = category + subcategories["utilities"]
+
+    def _validate_images(self, images):
+        if not isinstance(images, torch.Tensor):
+            raise TypeError(
+                "[🛑] Nilor-Nodes (WanFrameTrim): images must be a torch.Tensor."
+            )
+        if images.dim() != 4:
+            raise ValueError(
+                f"[🛑] Nilor-Nodes (WanFrameTrim): Expected 4D tensor (batch, height, width, channels), got shape {tuple(images.shape)}"
+            )
+        if images.shape[0] == 0:
+            raise ValueError(
+                "[🛑] Nilor-Nodes (WanFrameTrim): Input images tensor is empty."
+            )
+
+    def trim_to_wan_count(self, images: torch.Tensor):
+        self._validate_images(images)
+
+        batch_count = images.shape[0]
+        # Find the largest m <= batch_count such that m ≡ 1 (mod 4)
+        wan_count = batch_count - ((batch_count - 1) % 4)
+
+        if wan_count <= 0:
+            raise ValueError(
+                "[🛑] Nilor-Nodes (WanFrameTrim): Unable to compute a valid 4N+1 frame count from input."
+            )
+
+        trimmed = images[:wan_count]
+        return (trimmed,)
+
+
 class NilorCategorizeString:
     def __init__(self):
         pass
@@ -1607,6 +1654,7 @@ NODE_CLASS_MAPPINGS = {
     "Nilor Blur Analysis": NilorBlurAnalysis,
     "Nilor To Sparse Index Method": NilorToSparseIndexMethod,
     "Nilor Image Resize v2": NilorImageResizeV2,
+    "Nilor Wan Frame Trim": NilorWanFrameTrim,
 }
 
 # Mapping nodes to human-readable names
@@ -1636,4 +1684,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "Nilor Blur Analysis": "👺 Blur Analysis",
     "Nilor To Sparse Index Method": "👺 To Sparse Index Method",
     "Nilor Image Resize v2": "👺 Resize Image v2",
+    "Nilor Wan Frame Trim": "👺 Wan Frame Trim",
 }
