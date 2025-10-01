@@ -1442,6 +1442,7 @@ class NilorToSparseIndexMethod:
 
 class NilorImageResizeV2:
     upscale_methods = ["nearest-exact", "bilinear", "area", "bicubic", "lanczos"]
+
     @classmethod
     def INPUT_TYPES(s):
         return {
@@ -1450,15 +1451,41 @@ class NilorImageResizeV2:
                 "width": ("INT", {"default": 512, "min": 0, "max": BIGMAX, "step": 1}),
                 "height": ("INT", {"default": 512, "min": 0, "max": BIGMAX, "step": 1}),
                 "upscale_method": (s.upscale_methods,),
-                "keep_proportion": (["stretch", "resize", "pad", "pad_edge", "pad_edge_pixel", "crop", "pillarbox_blur"], {"default": False}),
+                "keep_proportion": (
+                    [
+                        "stretch",
+                        "resize",
+                        "pad",
+                        "pad_edge",
+                        "pad_edge_pixel",
+                        "crop",
+                        "pillarbox_blur",
+                    ],
+                    {"default": False},
+                ),
                 "pad_color": ("STRING", {"default": "0, 0, 0"}),
-                "crop_position": (["center", "top", "bottom", "left", "right"], {"default": "center"}),
-                "divisible_by": ("INT", {"default": 2, "min": 0, "max": 512, "step": 1}),
+                "crop_position": (
+                    ["center", "top", "bottom", "left", "right"],
+                    {"default": "center"},
+                ),
+                "divisible_by": (
+                    "INT",
+                    {"default": 2, "min": 0, "max": 512, "step": 1},
+                ),
             },
             "optional": {
                 "mask": ("MASK",),
                 "device": (["cpu", "gpu"],),
-                "per_batch": ("INT", {"default": 16, "min": 0, "max": 4096, "step": 1, "tooltip": "Process images in sub-batches. 0 disables."}),
+                "per_batch": (
+                    "INT",
+                    {
+                        "default": 16,
+                        "min": 0,
+                        "max": 4096,
+                        "step": 1,
+                        "tooltip": "Process images in sub-batches. 0 disables.",
+                    },
+                ),
             },
             "hidden": {"unique_id": "UNIQUE_ID"},
         }
@@ -1471,7 +1498,21 @@ class NilorImageResizeV2:
 Resizes images with optional aspect preservation, padding/cropping, and sub-batching to lower peak memory.
 """
 
-    def resize(self, image, width, height, keep_proportion, upscale_method, divisible_by, pad_color, crop_position, unique_id, device="cpu", mask=None, per_batch=16):
+    def resize(
+        self,
+        image,
+        width,
+        height,
+        keep_proportion,
+        upscale_method,
+        divisible_by,
+        pad_color,
+        crop_position,
+        unique_id,
+        device="cpu",
+        mask=None,
+        per_batch=16,
+    ):
         B, H, W, C = image.shape
 
         if device == "gpu":
@@ -1487,7 +1528,11 @@ Resizes images with optional aspect preservation, padding/cropping, and sub-batc
             height = H
 
         pillarbox_blur = keep_proportion == "pillarbox_blur"
-        if keep_proportion == "resize" or keep_proportion.startswith("pad") or pillarbox_blur:
+        if (
+            keep_proportion == "resize"
+            or keep_proportion.startswith("pad")
+            or pillarbox_blur
+        ):
             if width == 0 and height != 0:
                 ratio = height / H
                 new_width = round(W * ratio)
@@ -1544,13 +1589,19 @@ Resizes images with optional aspect preservation, padding/cropping, and sub-batc
                 bytes_per_elem = image.element_size()
                 est_total_bytes = B * height * width * C * bytes_per_elem
                 est_mb = est_total_bytes / (1024 * 1024)
-                print(f"[NilorImageResizeV2] estimated output ~{est_mb:.2f} MB; batching {per_batch}/{B}")
+                print(
+                    f"[NilorImageResizeV2] estimated output ~{est_mb:.2f} MB; batching {per_batch}/{B}"
+                )
             except:
                 pass
 
         def _process_subbatch(in_image, in_mask):
             out_image = in_image if in_image.device == device else in_image.to(device)
-            out_mask = None if in_mask is None else (in_mask if in_mask.device == device else in_mask.to(device))
+            out_mask = (
+                None
+                if in_mask is None
+                else (in_mask if in_mask.device == device else in_mask.to(device))
+            )
 
             if keep_proportion == "crop":
                 old_height = out_image.shape[-3]
@@ -1582,14 +1633,30 @@ Resizes images with optional aspect preservation, padding/cropping, and sub-batc
                 if out_mask is not None:
                     out_mask = out_mask.narrow(-1, x, crop_w).narrow(-2, y, crop_h)
 
-            out_image = common_upscale(out_image.movedim(-1, 1), width, height, upscale_method, crop="disabled").movedim(1, -1)
+            out_image = common_upscale(
+                out_image.movedim(-1, 1), width, height, upscale_method, crop="disabled"
+            ).movedim(1, -1)
             if out_mask is not None:
                 if upscale_method == "lanczos":
-                    out_mask = common_upscale(out_mask.unsqueeze(1).repeat(1, 3, 1, 1), width, height, upscale_method, crop="disabled").movedim(1, -1)[:, :, :, 0]
+                    out_mask = common_upscale(
+                        out_mask.unsqueeze(1).repeat(1, 3, 1, 1),
+                        width,
+                        height,
+                        upscale_method,
+                        crop="disabled",
+                    ).movedim(1, -1)[:, :, :, 0]
                 else:
-                    out_mask = common_upscale(out_mask.unsqueeze(1), width, height, upscale_method, crop="disabled").squeeze(1)
+                    out_mask = common_upscale(
+                        out_mask.unsqueeze(1),
+                        width,
+                        height,
+                        upscale_method,
+                        crop="disabled",
+                    ).squeeze(1)
 
-            if (keep_proportion.startswith("pad") or pillarbox_blur) and (pad_left > 0 or pad_right > 0 or pad_top > 0 or pad_bottom > 0):
+            if (keep_proportion.startswith("pad") or pillarbox_blur) and (
+                pad_left > 0 or pad_right > 0 or pad_top > 0 or pad_bottom > 0
+            ):
                 padded_width = width + pad_left + pad_right
                 padded_height = height + pad_top + pad_bottom
                 if divisible_by > 1:
@@ -1603,12 +1670,30 @@ Resizes images with optional aspect preservation, padding/cropping, and sub-batc
                         pad_bottom += extra_height
 
                 pad_mode = (
-                    "pillarbox_blur" if pillarbox_blur else
-                    "edge" if keep_proportion == "pad_edge" else
-                    "edge_pixel" if keep_proportion == "pad_edge_pixel" else
-                    "color"
+                    "pillarbox_blur"
+                    if pillarbox_blur
+                    else (
+                        "edge"
+                        if keep_proportion == "pad_edge"
+                        else (
+                            "edge_pixel"
+                            if keep_proportion == "pad_edge_pixel"
+                            else "color"
+                        )
+                    )
                 )
-                out_image, out_mask = ImagePadKJ.pad(self, out_image, pad_left, pad_right, pad_top, pad_bottom, 0, pad_color, pad_mode, mask=out_mask)
+                out_image, out_mask = ImagePadKJ.pad(
+                    self,
+                    out_image,
+                    pad_left,
+                    pad_right,
+                    pad_top,
+                    pad_bottom,
+                    0,
+                    pad_color,
+                    pad_mode,
+                    mask=out_mask,
+                )
 
             return out_image, out_mask
 
@@ -1627,9 +1712,13 @@ Resizes images with optional aspect preservation, padding/cropping, and sub-batc
                 sub_out_img, sub_out_mask = _process_subbatch(sub_img, sub_mask)
                 chunks.append(sub_out_img.cpu())
                 if mask is not None:
-                    mask_chunks.append(sub_out_mask.cpu() if sub_out_mask is not None else None)
+                    mask_chunks.append(
+                        sub_out_mask.cpu() if sub_out_mask is not None else None
+                    )
                 try:
-                    print(f"[NilorImageResizeV2] batch {current_batch}/{total_batches} · images {end_idx}/{B}")
+                    print(
+                        f"[NilorImageResizeV2] batch {current_batch}/{total_batches} · images {end_idx}/{B}"
+                    )
                 except:
                     pass
             out_image = torch.cat(chunks, dim=0)
@@ -1638,7 +1727,19 @@ Resizes images with optional aspect preservation, padding/cropping, and sub-batc
             else:
                 out_mask = None
 
-        return (out_image.cpu(), out_image.shape[2], out_image.shape[1], out_mask.cpu() if out_mask is not None else torch.zeros(64, 64, device=torch.device("cpu"), dtype=torch.float32))
+        return (
+            out_image.cpu(),
+            out_image.shape[2],
+            out_image.shape[1],
+            (
+                out_mask.cpu()
+                if out_mask is not None
+                else torch.zeros(
+                    64, 64, device=torch.device("cpu"), dtype=torch.float32
+                )
+            ),
+        )
+
 
 # Mapping class names to objects for potential export
 NODE_CLASS_MAPPINGS = {
