@@ -59,7 +59,7 @@ class NilorUserInput_Float:
                     "STRING",
                     {"default": "my_float_input", "multiline": False},
                 ),
-                "value": ("FLOAT", {"default": 0.0}),
+                "value": ("FLOAT", {"default": 0.0, "step": 0.001}),
             }
         }
 
