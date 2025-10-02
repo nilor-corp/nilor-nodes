@@ -10,6 +10,7 @@ import boto3
 import os
 import json
 from dotenv import load_dotenv
+from .brain_api_client import get_brain_api_client
 
 # --- Load Environment Variables ---
 # Get the directory of the current script
@@ -49,9 +50,13 @@ class MediaStreamInput:
                     {"default": "default_input", "multiline": False},
                 ),
                 "format": (["image", "image_batch", "video"],),
-                "presigned_download_url": (
+                "storage_id": (
                     "STRING",
-                    {"multiline": True, "default": "<auto-filled by system>"},
+                    {"default": "<auto-filled by system>", "multiline": False},
+                ),
+                "filename": (
+                    "STRING",
+                    {"default": "<auto-filled by system>", "multiline": False},
                 ),
             },
             "hidden": {},
@@ -64,19 +69,23 @@ class MediaStreamInput:
 
     def download(
         self,
-        presigned_download_url: str,
+        storage_id: str,
+        filename: str,
         format: str,
         input_name: str = "default_input",
     ):
         logging.info(
-            f"ℹ️\u2009 Nilor-Nodes: MediaStreamInput: Downloading from {presigned_download_url} for input '{input_name}' with format '{format}'"
+            f"ℹ️\u2009 Nilor-Nodes: MediaStreamInput: Downloading file '{filename}' (storage_id: {storage_id}) for input '{input_name}' with format '{format}'"
         )
         try:
+            # Get Brain API client
+            brain_client = get_brain_api_client()
+            
             # Two-phase download for batches: manifest first, then assets
             if format == "image_batch":
-                manifest_response = requests.get(presigned_download_url, timeout=60)
-                manifest_response.raise_for_status()
-                manifest = manifest_response.json()
+                # Download manifest file first
+                manifest_bytes = brain_client.get_file_from_storage(storage_id, filename)
+                manifest = json.loads(manifest_bytes.decode('utf-8'))
 
                 logging.info(
                     f"ℹ️\u2009 Nilor-Nodes: Processing manifest for '{manifest.get('input_name')}' with {len(manifest.get('files', []))} assets."
@@ -87,14 +96,19 @@ class MediaStreamInput:
                     manifest.get("files", []), key=lambda x: x.get("sequence", 0)
                 )
 
-                # Download all assets in parallel
+                # Download all assets using Brain API client
                 asset_responses = []
                 for file_info in sorted_files:
                     try:
-                        resp = requests.get(file_info["presigned_url"], timeout=180)
-                        resp.raise_for_status()
-                        asset_responses.append(resp.content)
-                    except requests.RequestException as e:
+                        # Each file_info should now contain storage_id and filename instead of presigned_url
+                        file_storage_id = file_info.get("storage_id")
+                        file_filename = file_info.get("filename")
+                        if not file_storage_id or not file_filename:
+                            raise ValueError(f"Missing storage_id or filename in manifest file info: {file_info}")
+                        
+                        file_bytes = brain_client.get_file_from_storage(file_storage_id, file_filename)
+                        asset_responses.append(file_bytes)
+                    except Exception as e:
                         logging.error(
                             f"🛑\u2009 Nilor-Nodes: Failed to download asset {file_info.get('filename')}: {e}"
                         )
@@ -103,9 +117,7 @@ class MediaStreamInput:
                 return self._process_image_batch(asset_responses)
 
             # --- Single-file download ---
-            response = requests.get(presigned_download_url, timeout=180)
-            response.raise_for_status()
-            media_bytes = response.content
+            media_bytes = brain_client.get_file_from_storage(storage_id, filename)
 
             if format == "video":
                 return self._process_video(media_bytes)
@@ -117,14 +129,9 @@ class MediaStreamInput:
                     f"[🛑] Nilor-Nodes (MediaStreamInput): Unsupported format '{format}' for single media download."
                 )
 
-        except requests.RequestException as e:
-            logging.error(
-                f"🛑\u2009 Nilor-Nodes (MediaStreamInput): Failed to download file: {e}"
-            )
-            return (None,)
         except Exception as e:
             logging.error(
-                f"🛑\u2009 Nilor-Nodes (MediaStreamInput): Failed to process media: {e}"
+                f"🛑\u2009 Nilor-Nodes (MediaStreamInput): Failed to download or process media: {e}"
             )
             return (None,)
 
@@ -219,17 +226,9 @@ class MediaStreamOutput:
                     "STRING",
                     {"default": "<auto-filled by system>", "multiline": False},
                 ),
-                "presigned_upload_url": (
-                    "STRING",
-                    {"multiline": True, "default": "<auto-filled by system>"},
-                ),
                 "job_completions_queue_url": (
                     "STRING",
                     {"multiline": True, "default": "<auto-filled by system>"},
-                ),
-                "output_object_keys": (
-                    "STRING",
-                    {"multiline": False, "default": "<auto-filled by system>"},
                 ),
             },
             "hidden": {
@@ -238,8 +237,7 @@ class MediaStreamOutput:
             },
         }
 
-    RETURN_TYPES = ("STRING",)
-    RETURN_NAMES = ("uploaded_url",)
+    RETURN_TYPES = ()
     FUNCTION = "upload_and_notify"
     OUTPUT_NODE = True
     CATEGORY = category + subcategories["streaming"]
@@ -252,9 +250,7 @@ class MediaStreamOutput:
         venue,
         canvas,
         scene,
-        presigned_upload_url,
         job_completions_queue_url,
-        output_object_keys,
         framerate,
         output_name: str = "default_output",
         prompt=None,
@@ -265,35 +261,28 @@ class MediaStreamOutput:
                 "[🛑] Nilor-Nodes (MediaStreamOutput): content_id is a required input for MediaStreamOutput."
             )
 
-        # The `output_object_keys` is received as a string representation of a dictionary.
-        # We must parse it back into a dictionary.
-        final_outputs_dict = {}
-        try:
-            # The string may use single quotes, so we replace them for valid JSON.
-            final_outputs_dict = json.loads(output_object_keys.replace("'", '"'))
-        except Exception as e:
-            logging.error(
-                f"🛑\u2009 Nilor-Nodes (MediaStreamOutput): FATAL -- Could not parse output_object_keys from string: {output_object_keys}. Error: {e}"
-            )
-            final_outputs_dict = {}  # Send empty dict on failure.
+        # No longer need to parse output_object_keys since we use storage_ids directly
 
-        # The presigned_upload_url provided to this node is specific to its output_name.
-        # We don't need to re-select it. We just need to perform the upload.
+        # Upload the media using Brain API client
+        brain_client = get_brain_api_client()
+        storage_result = None
+        
         if format == "png":
-            self._upload_image(images[0], presigned_upload_url)
+            storage_result = self._upload_image(images[0], brain_client, output_name)
         elif format == "mp4":
-            self._upload_video(images, presigned_upload_url, framerate)
+            storage_result = self._upload_video(images, brain_client, framerate, output_name)
 
-        # This node is responsible for a single output. We find its corresponding object key.
-        output_key_for_this_node = final_outputs_dict.get(output_name)
-        if not output_key_for_this_node:
+        # Use the storage_id from the upload result for the SQS message
+        if not storage_result or not storage_result.get('storage_id'):
             logging.error(
-                f"🛑\u2009 Nilor-Nodes (MediaStreamOutput): FATAL -- Could not find object key for output name '{output_name}' in output_object_keys."
+                f"🛑\u2009 Nilor-Nodes (MediaStreamOutput): FATAL -- Upload failed or no storage_id returned."
             )
             # Send an empty dictionary to signal failure.
             final_outputs_for_sqs = {}
         else:
-            final_outputs_for_sqs = {output_name: output_key_for_this_node}
+            # Use storage_id instead of object key
+            storage_id = storage_result['storage_id']
+            final_outputs_for_sqs = {output_name: storage_id}
 
         # After upload, send the filtered dictionary of outputs to the SQS queue.
         completion_message = {
@@ -330,9 +319,9 @@ class MediaStreamOutput:
             )
             raise  # Re-raise to fail the ComfyUI job
 
-        return {"ui": {"images": []}, "result": (presigned_upload_url,)}
+        return {"ui": {"images": []}}
 
-    def _upload_image(self, image_tensor, url):
+    def _upload_image(self, image_tensor, brain_client, output_name):
         logging.info(
             "ℹ️\u2009 Nilor-Nodes (MediaStreamOutput): Uploading as PNG image..."
         )
@@ -343,9 +332,10 @@ class MediaStreamOutput:
         img_pil.save(buffer, format="PNG", compress_level=4)
         buffer.seek(0)
 
-        self._perform_upload(buffer, url, "image/png")
+        filename = f"{output_name}.png"
+        return brain_client.upload_fileobj_to_storage(buffer, filename, "image/png")
 
-    def _upload_video(self, image_batch_tensor, url, framerate):
+    def _upload_video(self, image_batch_tensor, brain_client, framerate, output_name):
         logging.info(
             f"ℹ️\u2009 Nilor-Nodes (MediaStreamOutput): Uploading as MP4 video. Frame count: {len(image_batch_tensor)}"
         )
@@ -359,29 +349,9 @@ class MediaStreamOutput:
         imageio.mimwrite(buffer, frames, format="mp4", fps=framerate, quality=8)
         buffer.seek(0)
 
-        self._perform_upload(buffer, url, "video/mp4")
+        filename = f"{output_name}.mp4"
+        return brain_client.upload_fileobj_to_storage(buffer, filename, "video/mp4")
 
-    def _perform_upload(self, buffer, url, content_type):
-        try:
-            logging.info(
-                f"ℹ️\u2009 Nilor-Nodes (MediaStreamOutput): Uploading to {url} with Content-Type: {content_type}"
-            )
-            headers = {"Content-Type": content_type}
-            response = requests.put(
-                url, data=buffer.read(), headers=headers, timeout=300
-            )
-            response.raise_for_status()
-            logging.info("✅ Nilor-Nodes (MediaStreamOutput): Upload successful.")
-        except requests.RequestException as e:
-            logging.error(
-                f"🛑\u2009 Nilor-Nodes (MediaStreamOutput): Failed to upload media: {e}"
-            )
-            raise
-        except Exception as e:
-            logging.error(
-                f"🛑\u2009 Nilor-Nodes (MediaStreamOutput): Failed to process and upload media: {e}"
-            )
-            raise
 
 
 # --- Node Mappings ---
@@ -391,6 +361,6 @@ NODE_CLASS_MAPPINGS = {
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "MediaStreamInput": "👺 Media Stream Input (URL)",
-    "MediaStreamOutput": "👺 Media Stream Output (URL)",
+    "MediaStreamInput": "👺 Media Stream Input (Storage)",
+    "MediaStreamOutput": "👺 Media Stream Output (Storage)",
 }
