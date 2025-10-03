@@ -369,7 +369,7 @@ class MediaStreamOutput:
         upload_response.raise_for_status()
         
         logging.info(f"✅ Nilor-Nodes (MediaStreamOutput): PNG image uploaded successfully. Storage ID: {storage_id}")
-        return {"storage_id": storage_id, "filename": filename}
+        return storage_id
 
     def _upload_video(self, image_batch_tensor, brain_client, framerate, output_name):
         logging.info(
@@ -404,7 +404,7 @@ class MediaStreamOutput:
         upload_response.raise_for_status()
         
         logging.info(f"✅ Nilor-Nodes (MediaStreamOutput): MP4 video uploaded successfully. Storage ID: {storage_id}")
-        return {"storage_id": storage_id, "filename": filename}
+        return storage_id
 
 
 
