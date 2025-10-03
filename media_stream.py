@@ -291,15 +291,15 @@ class MediaStreamOutput:
             storage_result = self._upload_video(images, brain_client, framerate, output_name)
 
         # Use the storage_id from the upload result for the SQS message
-        if not storage_result or not storage_result.get('storage_id'):
+        if not storage_result:
             logging.error(
                 f"🛑\u2009 Nilor-Nodes (MediaStreamOutput): FATAL -- Upload failed or no storage_id returned."
             )
             # Send an empty dictionary to signal failure.
             final_outputs_for_sqs = {}
         else:
-            # Use storage_id instead of object key
-            storage_id = storage_result['storage_id']
+            # Use storage_id directly (it's now a string, not a dict)
+            storage_id = storage_result
             final_outputs_for_sqs = {output_name: storage_id}
 
         # After upload, send the filtered dictionary of outputs to the SQS queue.
