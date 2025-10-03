@@ -80,7 +80,9 @@ class MediaStreamInput:
         try:
             # Get Brain API client and MinIO endpoint
             brain_client = get_brain_api_client()
-            minio_endpoint = os.getenv("MINIO_ENDPOINT", "http://localhost:9000")
+            minio_endpoint = os.getenv("MINIO_ENDPOINT")
+            if not minio_endpoint:
+                raise ValueError("MINIO_ENDPOINT environment variable is required but not set")
             
             # Two-phase download for batches: manifest first, then assets
             if format == "image_batch":
@@ -351,7 +353,9 @@ class MediaStreamOutput:
         buffer.seek(0)
 
         filename = f"{output_name}.png"
-        minio_endpoint = os.getenv("MINIO_ENDPOINT", "http://localhost:9000")
+        minio_endpoint = os.getenv("MINIO_ENDPOINT")
+        if not minio_endpoint:
+            raise ValueError("MINIO_ENDPOINT environment variable is required but not set")
         
         # Get presigned upload URL
         upload_url_response = brain_client.get_presigned_upload_url(filename, "image/png", minio_endpoint)
@@ -386,7 +390,9 @@ class MediaStreamOutput:
         buffer.seek(0)
 
         filename = f"{output_name}.mp4"
-        minio_endpoint = os.getenv("MINIO_ENDPOINT", "http://localhost:9000")
+        minio_endpoint = os.getenv("MINIO_ENDPOINT")
+        if not minio_endpoint:
+            raise ValueError("MINIO_ENDPOINT environment variable is required but not set")
         
         # Get presigned upload URL
         upload_url_response = brain_client.get_presigned_upload_url(filename, "video/mp4", minio_endpoint)
