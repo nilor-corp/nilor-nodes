@@ -78,14 +78,20 @@ class MediaStreamInput:
             f"ℹ️\u2009 Nilor-Nodes: MediaStreamInput: Downloading file '{filename}' (storage_id: {storage_id}) for input '{input_name}' with format '{format}'"
         )
         try:
-            # Get Brain API client
+            # Get Brain API client and MinIO endpoint
             brain_client = get_brain_api_client()
+            minio_endpoint = os.getenv("MINIO_ENDPOINT", "http://localhost:9000")
             
             # Two-phase download for batches: manifest first, then assets
             if format == "image_batch":
-                # Download manifest file first
-                manifest_bytes = brain_client.get_file_from_storage(storage_id, filename)
-                manifest = json.loads(manifest_bytes.decode('utf-8'))
+                # Get presigned download URL for manifest
+                manifest_url_response = brain_client.get_presigned_download_url(storage_id, filename, minio_endpoint)
+                manifest_url = manifest_url_response["download_url"]
+                
+                # Download manifest file directly from MinIO
+                manifest_response = requests.get(manifest_url, timeout=300)
+                manifest_response.raise_for_status()
+                manifest = json.loads(manifest_response.content.decode('utf-8'))
 
                 logging.info(
                     f"ℹ️\u2009 Nilor-Nodes: Processing manifest for '{manifest.get('input_name')}' with {len(manifest.get('files', []))} assets."
@@ -96,18 +102,23 @@ class MediaStreamInput:
                     manifest.get("files", []), key=lambda x: x.get("sequence", 0)
                 )
 
-                # Download all assets using Brain API client
+                # Download all assets using presigned URLs
                 asset_responses = []
                 for file_info in sorted_files:
                     try:
-                        # Each file_info should now contain storage_id and filename instead of presigned_url
                         file_storage_id = file_info.get("storage_id")
                         file_filename = file_info.get("filename")
                         if not file_storage_id or not file_filename:
                             raise ValueError(f"Missing storage_id or filename in manifest file info: {file_info}")
                         
-                        file_bytes = brain_client.get_file_from_storage(file_storage_id, file_filename)
-                        asset_responses.append(file_bytes)
+                        # Get presigned download URL for this asset
+                        asset_url_response = brain_client.get_presigned_download_url(file_storage_id, file_filename, minio_endpoint)
+                        asset_url = asset_url_response["download_url"]
+                        
+                        # Download asset directly from MinIO
+                        asset_response = requests.get(asset_url, timeout=300)
+                        asset_response.raise_for_status()
+                        asset_responses.append(asset_response.content)
                     except Exception as e:
                         logging.error(
                             f"🛑\u2009 Nilor-Nodes: Failed to download asset {file_info.get('filename')}: {e}"
@@ -117,7 +128,14 @@ class MediaStreamInput:
                 return self._process_image_batch(asset_responses)
 
             # --- Single-file download ---
-            media_bytes = brain_client.get_file_from_storage(storage_id, filename)
+            # Get presigned download URL
+            download_url_response = brain_client.get_presigned_download_url(storage_id, filename, minio_endpoint)
+            download_url = download_url_response["download_url"]
+            
+            # Download file directly from MinIO
+            media_response = requests.get(download_url, timeout=300)
+            media_response.raise_for_status()
+            media_bytes = media_response.content
 
             if format == "video":
                 return self._process_video(media_bytes)
@@ -333,7 +351,25 @@ class MediaStreamOutput:
         buffer.seek(0)
 
         filename = f"{output_name}.png"
-        return brain_client.upload_fileobj_to_storage(buffer, filename, "image/png")
+        minio_endpoint = os.getenv("MINIO_ENDPOINT", "http://localhost:9000")
+        
+        # Get presigned upload URL
+        upload_url_response = brain_client.get_presigned_upload_url(filename, "image/png", minio_endpoint)
+        upload_url = upload_url_response["upload_url"]
+        storage_id = upload_url_response["storage_id"]
+        
+        # Upload directly to MinIO
+        buffer.seek(0)
+        upload_response = requests.put(
+            upload_url,
+            data=buffer.getvalue(),
+            headers={"Content-Type": "image/png"},
+            timeout=300
+        )
+        upload_response.raise_for_status()
+        
+        logging.info(f"✅ Nilor-Nodes (MediaStreamOutput): PNG image uploaded successfully. Storage ID: {storage_id}")
+        return {"storage_id": storage_id, "filename": filename}
 
     def _upload_video(self, image_batch_tensor, brain_client, framerate, output_name):
         logging.info(
@@ -350,7 +386,25 @@ class MediaStreamOutput:
         buffer.seek(0)
 
         filename = f"{output_name}.mp4"
-        return brain_client.upload_fileobj_to_storage(buffer, filename, "video/mp4")
+        minio_endpoint = os.getenv("MINIO_ENDPOINT", "http://localhost:9000")
+        
+        # Get presigned upload URL
+        upload_url_response = brain_client.get_presigned_upload_url(filename, "video/mp4", minio_endpoint)
+        upload_url = upload_url_response["upload_url"]
+        storage_id = upload_url_response["storage_id"]
+        
+        # Upload directly to MinIO
+        buffer.seek(0)
+        upload_response = requests.put(
+            upload_url,
+            data=buffer.getvalue(),
+            headers={"Content-Type": "video/mp4"},
+            timeout=300
+        )
+        upload_response.raise_for_status()
+        
+        logging.info(f"✅ Nilor-Nodes (MediaStreamOutput): MP4 video uploaded successfully. Storage ID: {storage_id}")
+        return {"storage_id": storage_id, "filename": filename}
 
 
 

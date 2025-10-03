@@ -247,6 +247,92 @@ class BrainApiClient:
             logging.error(f"Unexpected error deleting file '{filename}': {e}")
             raise
     
+    def get_presigned_upload_url(self, filename: str, content_type: str, minio_endpoint: str) -> Dict[str, Any]:
+        """
+        Get a presigned upload URL from Brain API for direct MinIO upload.
+        
+        Args:
+            filename: Name of the file to upload
+            content_type: MIME type of the file
+            minio_endpoint: MinIO endpoint that ComfyUI can access
+            
+        Returns:
+            Dict containing storage_id, upload_url, and object_key
+            
+        Raises:
+            requests.RequestException: If request fails
+        """
+        url = f"{self.base_url}/storage/generate-upload-url"
+        payload = {
+            "filename": filename,
+            "content_type": content_type,
+            "minio_endpoint": minio_endpoint
+        }
+        
+        try:
+            logging.info(f"Requesting presigned upload URL for '{filename}' from Brain API...")
+            response = requests.post(
+                url,
+                json=payload,
+                headers=self.headers,
+                timeout=30
+            )
+            response.raise_for_status()
+            
+            result = response.json()
+            logging.info(f"Presigned upload URL generated. Storage ID: {result.get('storage_id')}")
+            return result
+            
+        except requests.RequestException as e:
+            logging.error(f"Failed to get presigned upload URL for '{filename}': {e}")
+            raise
+        except Exception as e:
+            logging.error(f"Unexpected error getting presigned upload URL for '{filename}': {e}")
+            raise
+    
+    def get_presigned_download_url(self, storage_id: str, filename: str, minio_endpoint: str) -> Dict[str, Any]:
+        """
+        Get a presigned download URL from Brain API for direct MinIO download.
+        
+        Args:
+            storage_id: Storage ID of the file to download
+            filename: Name of the file to download
+            minio_endpoint: MinIO endpoint that ComfyUI can access
+            
+        Returns:
+            Dict containing download_url
+            
+        Raises:
+            requests.RequestException: If request fails
+        """
+        url = f"{self.base_url}/storage/generate-download-url"
+        payload = {
+            "storage_id": storage_id,
+            "filename": filename,
+            "minio_endpoint": minio_endpoint
+        }
+        
+        try:
+            logging.info(f"Requesting presigned download URL for '{filename}' (storage_id: {storage_id}) from Brain API...")
+            response = requests.post(
+                url,
+                json=payload,
+                headers=self.headers,
+                timeout=30
+            )
+            response.raise_for_status()
+            
+            result = response.json()
+            logging.info(f"Presigned download URL generated for '{filename}'")
+            return result
+            
+        except requests.RequestException as e:
+            logging.error(f"Failed to get presigned download URL for '{filename}' (storage_id: {storage_id}): {e}")
+            raise
+        except Exception as e:
+            logging.error(f"Unexpected error getting presigned download URL for '{filename}': {e}")
+            raise
+
     def health_check(self) -> bool:
         """
         Check if the Brain API is accessible and authentication is working.
