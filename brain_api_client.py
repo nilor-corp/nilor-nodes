@@ -25,240 +25,248 @@ logging.basicConfig(
 class BrainApiClient:
     """
     Client for interacting with Brain API storage endpoints.
-    
+
     This client handles authentication and provides methods for uploading,
     downloading, and deleting files through the Brain API storage endpoints.
     """
-    
+
     def __init__(self):
         """Initialize the Brain API client with configuration from environment variables."""
-        self.base_url = os.getenv("BRANDO_BRAIN_API_BASE_URL", "http://localhost:2024/api")
+        self.base_url = os.getenv(
+            "BRANDO_BRAIN_API_BASE_URL", "http://localhost:2024/api"
+        )
         self.api_key = os.getenv("BRANDO_API_KEY")
-        
+
         if not self.api_key:
             raise ValueError(
                 "BRANDO_API_KEY environment variable is required for Brain API authentication"
             )
-        
+
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
-            "User-Agent": "ComfyUI-NilorNodes/1.0"
+            "User-Agent": "ComfyUI-NilorNodes/1.0",
         }
-        
+
         logging.info(f"Brain API Client initialized with base URL: {self.base_url}")
-    
+
     def upload_file_to_storage(self, file_path: str, filename: str) -> Dict[str, Any]:
         """
         Upload a file to Brain API storage and return storage metadata.
-        
+
         Args:
             file_path: Local path to the file to upload
             filename: Name to use for the uploaded file
-            
+
         Returns:
             Dict containing storage_id and filename
-            
+
         Raises:
             requests.RequestException: If upload fails
             FileNotFoundError: If file_path doesn't exist
         """
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
-        
+
         url = f"{self.base_url}/storage/upload"
-        
+
         try:
-            with open(file_path, 'rb') as file:
-                files = {'file': (filename, file, 'application/octet-stream')}
-                
+            with open(file_path, "rb") as file:
+                files = {"file": (filename, file, "application/octet-stream")}
+
                 logging.info(f"Uploading file '{filename}' to Brain API storage...")
                 response = requests.post(
-                    url, 
-                    files=files, 
-                    headers=self.headers, 
-                    timeout=300
+                    url, files=files, headers=self.headers, timeout=300
                 )
                 response.raise_for_status()
-                
+
                 result = response.json()
-                logging.info(f"Upload successful. Storage ID: {result.get('storage_id')}")
+                logging.info(
+                    f"Upload successful. Storage ID: {result.get('storage_id')}"
+                )
                 return result
-                
+
         except requests.RequestException as e:
             logging.error(f"Failed to upload file '{filename}': {e}")
             raise
         except Exception as e:
             logging.error(f"Unexpected error uploading file '{filename}': {e}")
             raise
-    
-    def upload_fileobj_to_storage(self, file_obj, filename: str, content_type: str = 'application/octet-stream') -> Dict[str, Any]:
+
+    def upload_fileobj_to_storage(
+        self, file_obj, filename: str, content_type: str = "application/octet-stream"
+    ) -> Dict[str, Any]:
         """
         Upload a file-like object to Brain API storage and return storage metadata.
-        
+
         Args:
             file_obj: File-like object to upload
             filename: Name to use for the uploaded file
             content_type: MIME type of the file
-            
+
         Returns:
             Dict containing storage_id and filename
-            
+
         Raises:
             requests.RequestException: If upload fails
         """
         url = f"{self.base_url}/storage/upload"
-        
+
         try:
-            files = {'file': (filename, file_obj, content_type)}
-            
+            files = {"file": (filename, file_obj, content_type)}
+
             logging.info(f"Uploading file object '{filename}' to Brain API storage...")
             response = requests.post(
-                url, 
-                files=files, 
-                headers=self.headers, 
-                timeout=300
+                url, files=files, headers=self.headers, timeout=300
             )
             response.raise_for_status()
-            
+
             result = response.json()
             logging.info(f"Upload successful. Storage ID: {result.get('storage_id')}")
             return result
-            
+
         except requests.RequestException as e:
             logging.error(f"Failed to upload file object '{filename}': {e}")
             raise
         except Exception as e:
             logging.error(f"Unexpected error uploading file object '{filename}': {e}")
             raise
-    
-    def download_file_from_storage(self, storage_id: str, filename: str, dest_path: str) -> str:
+
+    def download_file_from_storage(
+        self, storage_id: str, filename: str, dest_path: str
+    ) -> str:
         """
         Download a file from Brain API storage to a local path.
-        
+
         Args:
             storage_id: Storage ID of the file to download
             filename: Name of the file to download
             dest_path: Local path where the file should be saved
-            
+
         Returns:
             Path to the downloaded file
-            
+
         Raises:
             requests.RequestException: If download fails
         """
         url = f"{self.base_url}/storage/{storage_id}"
-        params = {'filename': filename}
-        
+        params = {"filename": filename}
+
         try:
-            logging.info(f"Downloading file '{filename}' (storage_id: {storage_id}) from Brain API storage...")
+            logging.info(
+                f"Downloading file '{filename}' (storage_id: {storage_id}) from Brain API storage..."
+            )
             response = requests.get(
-                url, 
-                params=params, 
-                headers=self.headers, 
-                timeout=300,
-                stream=True
+                url, params=params, headers=self.headers, timeout=300, stream=True
             )
             response.raise_for_status()
-            
+
             # Ensure destination directory exists
             os.makedirs(os.path.dirname(dest_path), exist_ok=True)
-            
-            with open(dest_path, 'wb') as f:
+
+            with open(dest_path, "wb") as f:
                 for chunk in response.iter_content(chunk_size=8192):
                     f.write(chunk)
-            
+
             logging.info(f"Download successful. File saved to: {dest_path}")
             return dest_path
-            
+
         except requests.RequestException as e:
-            logging.error(f"Failed to download file '{filename}' (storage_id: {storage_id}): {e}")
+            logging.error(
+                f"Failed to download file '{filename}' (storage_id: {storage_id}): {e}"
+            )
             raise
         except Exception as e:
             logging.error(f"Unexpected error downloading file '{filename}': {e}")
             raise
-    
+
     def get_file_from_storage(self, storage_id: str, filename: str) -> bytes:
         """
         Get file content from Brain API storage as bytes.
-        
+
         Args:
             storage_id: Storage ID of the file to download
             filename: Name of the file to download
-            
+
         Returns:
             File content as bytes
-            
+
         Raises:
             requests.RequestException: If download fails
         """
         url = f"{self.base_url}/storage/{storage_id}"
-        params = {'filename': filename}
-        
+        params = {"filename": filename}
+
         try:
-            logging.info(f"Getting file '{filename}' (storage_id: {storage_id}) from Brain API storage...")
+            logging.info(
+                f"Getting file '{filename}' (storage_id: {storage_id}) from Brain API storage..."
+            )
             response = requests.get(
-                url, 
-                params=params, 
-                headers=self.headers, 
-                timeout=300
+                url, params=params, headers=self.headers, timeout=300
             )
             response.raise_for_status()
-            
-            logging.info(f"File retrieval successful. Size: {len(response.content)} bytes")
+
+            logging.info(
+                f"File retrieval successful. Size: {len(response.content)} bytes"
+            )
             return response.content
-            
+
         except requests.RequestException as e:
-            logging.error(f"Failed to get file '{filename}' (storage_id: {storage_id}): {e}")
+            logging.error(
+                f"Failed to get file '{filename}' (storage_id: {storage_id}): {e}"
+            )
             raise
         except Exception as e:
             logging.error(f"Unexpected error getting file '{filename}': {e}")
             raise
-    
+
     def delete_file_from_storage(self, storage_id: str, filename: str) -> None:
         """
         Delete a file from Brain API storage.
-        
+
         Args:
             storage_id: Storage ID of the file to delete
             filename: Name of the file to delete
-            
+
         Raises:
             requests.RequestException: If deletion fails
         """
         url = f"{self.base_url}/storage/{storage_id}"
-        params = {'filename': filename}
-        
+        params = {"filename": filename}
+
         try:
-            logging.info(f"Deleting file '{filename}' (storage_id: {storage_id}) from Brain API storage...")
+            logging.info(
+                f"Deleting file '{filename}' (storage_id: {storage_id}) from Brain API storage..."
+            )
             response = requests.delete(
-                url, 
-                params=params, 
-                headers=self.headers, 
-                timeout=60
+                url, params=params, headers=self.headers, timeout=60
             )
             response.raise_for_status()
-            
+
             logging.info(f"File deletion successful")
-            
+
         except requests.RequestException as e:
-            logging.error(f"Failed to delete file '{filename}' (storage_id: {storage_id}): {e}")
+            logging.error(
+                f"Failed to delete file '{filename}' (storage_id: {storage_id}): {e}"
+            )
             raise
         except Exception as e:
             logging.error(f"Unexpected error deleting file '{filename}': {e}")
             raise
-    
-    def get_presigned_upload_url(self, filename: str, content_type: str, minio_endpoint: str) -> Dict[str, Any]:
+
+    def get_presigned_upload_url(
+        self, filename: str, content_type: str, minio_endpoint: str
+    ) -> Dict[str, Any]:
         """
         Get a presigned upload URL from Brain API for direct MinIO upload.
-        
+
         Args:
             filename: Name of the file to upload
             content_type: MIME type of the file
             minio_endpoint: MinIO endpoint that ComfyUI can access
-            
+
         Returns:
             Dict containing storage_id, upload_url, and object_key
-            
+
         Raises:
             requests.RequestException: If request fails
         """
@@ -266,42 +274,47 @@ class BrainApiClient:
         payload = {
             "filename": filename,
             "content_type": content_type,
-            "minio_endpoint": minio_endpoint
+            "minio_endpoint": minio_endpoint,
         }
-        
+
         try:
-            logging.info(f"Requesting presigned upload URL for '{filename}' from Brain API...")
+            logging.info(
+                f"Requesting presigned upload URL for '{filename}' from Brain API..."
+            )
             response = requests.post(
-                url,
-                json=payload,
-                headers=self.headers,
-                timeout=30
+                url, json=payload, headers=self.headers, timeout=30
             )
             response.raise_for_status()
-            
+
             result = response.json()
-            logging.info(f"Presigned upload URL generated. Storage ID: {result.get('storage_id')}")
+            logging.info(
+                f"Presigned upload URL generated. Storage ID: {result.get('storage_id')}"
+            )
             return result
-            
+
         except requests.RequestException as e:
             logging.error(f"Failed to get presigned upload URL for '{filename}': {e}")
             raise
         except Exception as e:
-            logging.error(f"Unexpected error getting presigned upload URL for '{filename}': {e}")
+            logging.error(
+                f"Unexpected error getting presigned upload URL for '{filename}': {e}"
+            )
             raise
-    
-    def get_presigned_download_url(self, storage_id: str, filename: str, minio_endpoint: str) -> Dict[str, Any]:
+
+    def get_presigned_download_url(
+        self, storage_id: str, filename: str, minio_endpoint: str
+    ) -> Dict[str, Any]:
         """
         Get a presigned download URL from Brain API for direct MinIO download.
-        
+
         Args:
             storage_id: Storage ID of the file to download
             filename: Name of the file to download
             minio_endpoint: MinIO endpoint that ComfyUI can access
-            
+
         Returns:
             Dict containing download_url
-            
+
         Raises:
             requests.RequestException: If request fails
         """
@@ -309,34 +322,37 @@ class BrainApiClient:
         payload = {
             "storage_id": storage_id,
             "filename": filename,
-            "minio_endpoint": minio_endpoint
+            "minio_endpoint": minio_endpoint,
         }
-        
+
         try:
-            logging.info(f"Requesting presigned download URL for '{filename}' (storage_id: {storage_id}) from Brain API...")
+            logging.info(
+                f"Requesting presigned download URL for '{filename}' (storage_id: {storage_id}) from Brain API..."
+            )
             response = requests.post(
-                url,
-                json=payload,
-                headers=self.headers,
-                timeout=30
+                url, json=payload, headers=self.headers, timeout=30
             )
             response.raise_for_status()
-            
+
             result = response.json()
             logging.info(f"Presigned download URL generated for '{filename}'")
             return result
-            
+
         except requests.RequestException as e:
-            logging.error(f"Failed to get presigned download URL for '{filename}' (storage_id: {storage_id}): {e}")
+            logging.error(
+                f"Failed to get presigned download URL for '{filename}' (storage_id: {storage_id}): {e}"
+            )
             raise
         except Exception as e:
-            logging.error(f"Unexpected error getting presigned download URL for '{filename}': {e}")
+            logging.error(
+                f"Unexpected error getting presigned download URL for '{filename}': {e}"
+            )
             raise
 
     def health_check(self) -> bool:
         """
         Check if the Brain API is accessible and authentication is working.
-        
+
         Returns:
             True if API is accessible, False otherwise
         """
@@ -351,7 +367,10 @@ class BrainApiClient:
             try:
                 url = f"{self.base_url}/storage/upload"
                 response = requests.head(url, headers=self.headers, timeout=10)
-                return response.status_code in [200, 405]  # 405 Method Not Allowed is OK for HEAD
+                return response.status_code in [
+                    200,
+                    405,
+                ]  # 405 Method Not Allowed is OK for HEAD
             except:
                 return False
 
@@ -359,10 +378,11 @@ class BrainApiClient:
 # Global client instance
 _brain_api_client = None
 
+
 def get_brain_api_client() -> BrainApiClient:
     """
     Get or create the global Brain API client instance.
-    
+
     Returns:
         BrainApiClient instance
     """

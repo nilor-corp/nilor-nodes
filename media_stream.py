@@ -82,18 +82,22 @@ class MediaStreamInput:
             brain_client = get_brain_api_client()
             minio_endpoint = os.getenv("MINIO_ENDPOINT")
             if not minio_endpoint:
-                raise ValueError("MINIO_ENDPOINT environment variable is required but not set")
-            
+                raise ValueError(
+                    "MINIO_ENDPOINT environment variable is required but not set"
+                )
+
             # Two-phase download for batches: manifest first, then assets
             if format == "image_batch":
                 # Get presigned download URL for manifest
-                manifest_url_response = brain_client.get_presigned_download_url(storage_id, filename, minio_endpoint)
+                manifest_url_response = brain_client.get_presigned_download_url(
+                    storage_id, filename, minio_endpoint
+                )
                 manifest_url = manifest_url_response["download_url"]
-                
+
                 # Download manifest file directly from MinIO
                 manifest_response = requests.get(manifest_url, timeout=300)
                 manifest_response.raise_for_status()
-                manifest = json.loads(manifest_response.content.decode('utf-8'))
+                manifest = json.loads(manifest_response.content.decode("utf-8"))
 
                 logging.info(
                     f"ℹ️\u2009 Nilor-Nodes: Processing manifest for '{manifest.get('input_name')}' with {len(manifest.get('files', []))} assets."
@@ -111,12 +115,16 @@ class MediaStreamInput:
                         file_storage_id = file_info.get("storage_id")
                         file_filename = file_info.get("filename")
                         if not file_storage_id or not file_filename:
-                            raise ValueError(f"Missing storage_id or filename in manifest file info: {file_info}")
-                        
+                            raise ValueError(
+                                f"Missing storage_id or filename in manifest file info: {file_info}"
+                            )
+
                         # Get presigned download URL for this asset
-                        asset_url_response = brain_client.get_presigned_download_url(file_storage_id, file_filename, minio_endpoint)
+                        asset_url_response = brain_client.get_presigned_download_url(
+                            file_storage_id, file_filename, minio_endpoint
+                        )
                         asset_url = asset_url_response["download_url"]
-                        
+
                         # Download asset directly from MinIO
                         asset_response = requests.get(asset_url, timeout=300)
                         asset_response.raise_for_status()
@@ -131,9 +139,11 @@ class MediaStreamInput:
 
             # --- Single-file download ---
             # Get presigned download URL
-            download_url_response = brain_client.get_presigned_download_url(storage_id, filename, minio_endpoint)
+            download_url_response = brain_client.get_presigned_download_url(
+                storage_id, filename, minio_endpoint
+            )
             download_url = download_url_response["download_url"]
-            
+
             # Download file directly from MinIO
             media_response = requests.get(download_url, timeout=300)
             media_response.raise_for_status()
@@ -286,11 +296,13 @@ class MediaStreamOutput:
         # Upload the media using Brain API client
         brain_client = get_brain_api_client()
         storage_result = None
-        
+
         if format == "png":
             storage_result = self._upload_image(images[0], brain_client, output_name)
         elif format == "mp4":
-            storage_result = self._upload_video(images, brain_client, framerate, output_name)
+            storage_result = self._upload_video(
+                images, brain_client, framerate, output_name
+            )
 
         # Use the storage_id from the upload result for the SQS message
         if not storage_result:
@@ -355,24 +367,30 @@ class MediaStreamOutput:
         filename = f"{output_name}.png"
         minio_endpoint = os.getenv("MINIO_ENDPOINT")
         if not minio_endpoint:
-            raise ValueError("MINIO_ENDPOINT environment variable is required but not set")
-        
+            raise ValueError(
+                "MINIO_ENDPOINT environment variable is required but not set"
+            )
+
         # Get presigned upload URL
-        upload_url_response = brain_client.get_presigned_upload_url(filename, "image/png", minio_endpoint)
+        upload_url_response = brain_client.get_presigned_upload_url(
+            filename, "image/png", minio_endpoint
+        )
         upload_url = upload_url_response["upload_url"]
         storage_id = upload_url_response["storage_id"]
-        
+
         # Upload directly to MinIO
         buffer.seek(0)
         upload_response = requests.put(
             upload_url,
             data=buffer.getvalue(),
             headers={"Content-Type": "image/png"},
-            timeout=300
+            timeout=300,
         )
         upload_response.raise_for_status()
-        
-        logging.info(f"✅ Nilor-Nodes (MediaStreamOutput): PNG image uploaded successfully. Storage ID: {storage_id}")
+
+        logging.info(
+            f"✅ Nilor-Nodes (MediaStreamOutput): PNG image uploaded successfully. Storage ID: {storage_id}"
+        )
         return storage_id
 
     def _upload_video(self, image_batch_tensor, brain_client, framerate, output_name):
@@ -392,26 +410,31 @@ class MediaStreamOutput:
         filename = f"{output_name}.mp4"
         minio_endpoint = os.getenv("MINIO_ENDPOINT")
         if not minio_endpoint:
-            raise ValueError("MINIO_ENDPOINT environment variable is required but not set")
-        
+            raise ValueError(
+                "MINIO_ENDPOINT environment variable is required but not set"
+            )
+
         # Get presigned upload URL
-        upload_url_response = brain_client.get_presigned_upload_url(filename, "video/mp4", minio_endpoint)
+        upload_url_response = brain_client.get_presigned_upload_url(
+            filename, "video/mp4", minio_endpoint
+        )
         upload_url = upload_url_response["upload_url"]
         storage_id = upload_url_response["storage_id"]
-        
+
         # Upload directly to MinIO
         buffer.seek(0)
         upload_response = requests.put(
             upload_url,
             data=buffer.getvalue(),
             headers={"Content-Type": "video/mp4"},
-            timeout=300
+            timeout=300,
         )
         upload_response.raise_for_status()
-        
-        logging.info(f"✅ Nilor-Nodes (MediaStreamOutput): MP4 video uploaded successfully. Storage ID: {storage_id}")
-        return storage_id
 
+        logging.info(
+            f"✅ Nilor-Nodes (MediaStreamOutput): MP4 video uploaded successfully. Storage ID: {storage_id}"
+        )
+        return storage_id
 
 
 # --- Node Mappings ---
