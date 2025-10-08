@@ -18,7 +18,6 @@ from pathlib import Path
 import cv2
 import warnings
 from .utils import pil2tensor, tensor2pil
-import logging
 from .logger import logger
 from comfy.utils import common_upscale
 from comfy import model_management
