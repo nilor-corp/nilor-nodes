@@ -41,13 +41,13 @@ SQS_JOBS_TO_PROCESS_QUEUE_NAME = os.getenv(
 SQS_JOB_STATUS_UPDATES_QUEUE_NAME = os.getenv(
     "SQS_JOB_STATUS_UPDATES_QUEUE_NAME", "job_status_updates"
 )
+SQS_POLL_WAIT_TIME = int(os.getenv("SQS_POLL_WAIT_TIME", "10"))  # SQS Long Polling
+SQS_MAX_MESSAGES = 1
 COMFYUI_API_URL = os.getenv("COMFYUI_API_URL", "http://127.0.0.1:8188") + "/prompt"
 COMFYUI_WS_URL = os.getenv("COMFYUI_WS_URL", "ws://127.0.0.1:8188") + "/ws"
 AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID", "local")
 AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY", "local")
 AWS_DEFAULT_REGION = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
-POLL_WAIT_TIME_SECONDS = 20  # SQS Long Polling
-MAX_MESSAGES = 1
 
 
 class WorkerConsumer:
@@ -265,8 +265,8 @@ class WorkerConsumer:
                     ) as client:
                         response = await client.receive_message(
                             QueueUrl=self.jobs_queue_url,
-                            MaxNumberOfMessages=MAX_MESSAGES,
-                            WaitTimeSeconds=POLL_WAIT_TIME_SECONDS,
+                            MaxNumberOfMessages=SQS_MAX_MESSAGES,
+                            WaitTimeSeconds=SQS_POLL_WAIT_TIME,
                         )
 
                     messages = response.get("Messages", [])
