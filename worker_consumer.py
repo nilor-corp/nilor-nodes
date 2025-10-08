@@ -17,6 +17,7 @@ import websockets
 from aiobotocore.session import get_session
 from dotenv import load_dotenv
 from botocore.exceptions import EndpointConnectionError
+from .logger import logger
 
 # --- Load Environment Variables ---
 # Load from the .env file in the same directory
@@ -24,11 +25,11 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 dotenv_path = os.path.join(current_dir, ".env")
 if os.path.exists(dotenv_path):
     load_dotenv(dotenv_path=dotenv_path)
-    logging.info(
+    logger.info(
         f"✅\u2009 Nilor-Nodes: Loaded environment variables from {dotenv_path}"
     )
 else:
-    logging.info(
+    logger.info(
         "⚠️\u2009 Nilor-Nodes: No .env file found, relying on shell environment variables."
     )
 
