@@ -311,7 +311,7 @@ class MediaStreamOutput:
                 aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY", "local"),
                 region_name=os.getenv("AWS_DEFAULT_REGION", "us-east-1"),
             )
-            logger.info(
+            logger.debug(
                 f"ℹ️\u2009 Nilor-Nodes (MediaStreamOutput): Sending completion message for content {content_id} to queue: {job_completions_queue_url}"
             )
             sqs_client.send_message(
@@ -319,7 +319,7 @@ class MediaStreamOutput:
                 MessageBody=json.dumps(completion_message),
             )
             logger.info(
-                "✅ Nilor-Nodes (MediaStreamOutput): Completion message sent successfully."
+                f"✅ Nilor-Nodes (MediaStreamOutput): Completion message sent successfully for content {content_id} to queue: {job_completions_queue_url}"
             )
         except Exception as e:
             logger.error(
@@ -330,7 +330,7 @@ class MediaStreamOutput:
         return {"ui": {"images": []}, "result": (presigned_upload_url,)}
 
     def _upload_image(self, image_tensor, url):
-        logger.info(
+        logger.debug(
             "ℹ️\u2009 Nilor-Nodes (MediaStreamOutput): Uploading as PNG image..."
         )
         i = 255.0 * image_tensor.cpu().numpy()

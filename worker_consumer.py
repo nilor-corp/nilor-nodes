@@ -13,6 +13,8 @@ import json
 import logging
 import asyncio
 import aiohttp
+import socket
+import urllib.parse
 import websockets
 from aiobotocore.session import get_session
 from dotenv import load_dotenv
@@ -59,6 +61,17 @@ class WorkerConsumer:
         self.jobs_queue_url = None
         self.status_updates_queue_url = None
         self.http_session = None
+        self.is_busy = False
+        self.websocket_sid = None
+
+        # Stable client_id for routing events to this worker
+        env_id = os.getenv("NILOR_WORKER_CLIENT_ID")
+        if env_id and env_id.strip():
+            self.worker_client_id = env_id.strip()
+        else:
+            host = socket.gethostname()
+            self.worker_client_id = f"nilor-worker-{host}"
+        self.current_prompt_id = None
 
     async def _initialize_sqs(self):
         """Initializes SQS queue URLs. Returns True on success, False on failure."""
@@ -103,9 +116,10 @@ class WorkerConsumer:
     async def listen_for_comfy_events(self):
         while True:
             try:
-                async with websockets.connect(COMFYUI_WS_URL) as websocket:
-                    logger.info(
-                        f"ℹ️\u2009 Nilor-Nodes (worker_consumer): Connected to ComfyUI websocket at {COMFYUI_WS_URL}"
+                ws_url = f"{COMFYUI_WS_URL}?clientId={urllib.parse.quote(self.worker_client_id)}"
+                async with websockets.connect(ws_url) as websocket:
+                    logger.debug(
+                        f"ℹ️\u2009 Nilor-Nodes (worker_consumer): Connected to ComfyUI websocket at {ws_url}"
                     )
                     while True:
                         message = await websocket.recv()
@@ -119,8 +133,18 @@ class WorkerConsumer:
                                 if not prompt_id and "sid" in data:
                                     prompt_id = data["sid"]
 
-                                if not prompt_id:
+                                # Allow 'executing' events through even if missing prompt_id
+                                if not prompt_id and event_type != "executing":
                                     continue
+
+                                # Capture our websocket client id from initial status message
+                                if event_type == "status":
+                                    sid = data.get("sid")
+                                    if sid:
+                                        self.websocket_sid = sid
+                                        logger.debug(
+                                            f"ℹ️\u2009 Nilor-Nodes (worker_consumer): Captured websocket SID: {sid}"
+                                        )
 
                                 # Use the first progress event as a signal that the job is running.
                                 if (
@@ -140,8 +164,11 @@ class WorkerConsumer:
                                         "running_status", "running"
                                     )
                                     logger.info(
-                                        f"ℹ️\u2009 Nilor-Nodes (worker_consumer): Execution started for prompt_id {prompt_id} (content_id: {content_id}) via '{event_type}' event. Sending '{running_status}' status."
+                                        f"ℹ️\u2009 Nilor-Nodes (worker_consumer): Execution started for prompt_id {prompt_id} (content_id: {content_id}) via '{event_type}' event."
                                     )
+                                    # Mark worker busy as soon as execution starts
+                                    self.is_busy = True
+
                                     await self._send_status_update(
                                         content_id,
                                         running_status,
@@ -182,28 +209,48 @@ class WorkerConsumer:
                                         self.content_context_by_content_id.pop(
                                             content_id, None
                                         )
-                                    self.sent_running_status_prompts.discard(prompt_id)
+                                    effective_prompt_id = (
+                                        prompt_id or self.current_prompt_id
+                                    )
+                                    if effective_prompt_id:
+                                        self._finalize_prompt(
+                                            effective_prompt_id,
+                                            reason="execution_error",
+                                        )
 
-                                # Log successful execution
+                                # Node-level executed event (many per prompt) — ignore for busy/reset
                                 elif event_type == "executed":
-                                    logger.info(
-                                        f"✅ Nilor-Nodes (worker_consumer): Prompt {prompt_id} executed successfully according to websocket event. Final node is responsible for sending completion message."
+                                    logger.debug(
+                                        f"ℹ️\u2009 Nilor-Nodes (worker_consumer): Received node executed event for prompt_id {prompt_id}: {data}"
                                     )
-                                    if prompt_id in self.prompt_id_to_content_id_map:
-                                        content_id = (
-                                            self.prompt_id_to_content_id_map.pop(
-                                                prompt_id
-                                            )
-                                        )
-                                        self.content_context_by_content_id.pop(
-                                            content_id, None
-                                        )
-                                    self.sent_running_status_prompts.discard(prompt_id)
 
-                                elif event_type not in ["progress", "progress_state"]:
-                                    logger.info(
-                                        f"ℹ️\u2009 Nilor-Nodes (worker_consumer): Received ComfyUI websocket event of type '{event_type}': {data}"
+                                # Prompt-level completion signal: executing with node None
+                                elif event_type == "executing":
+                                    node_id = data.get("node")
+                                    logger.debug(
+                                        f"ℹ️\u2009 Nilor-Nodes (worker_consumer): Received 'executing' event. prompt_id={prompt_id}, node_id={node_id}"
                                     )
+
+                                    norm_node_id = self._normalize_node_id(node_id)
+                                    if norm_node_id is None:
+                                        effective_prompt_id = (
+                                            prompt_id or self.current_prompt_id
+                                        )
+                                        if effective_prompt_id:
+                                            self._finalize_prompt(
+                                                effective_prompt_id,
+                                                reason="executing node=None",
+                                            )
+
+                                elif event_type == "execution_success":
+                                    effective_prompt_id = (
+                                        prompt_id or self.current_prompt_id
+                                    )
+                                    if effective_prompt_id:
+                                        self._finalize_prompt(
+                                            effective_prompt_id,
+                                            reason="execution_success",
+                                        )
 
                             except json.JSONDecodeError:
                                 logger.debug(
@@ -252,6 +299,14 @@ class WorkerConsumer:
                         f"ℹ️\u2009 Nilor-Nodes (worker_consumer): Starting worker consumer. Polling queue: {self.jobs_queue_url}"
                     )
 
+                # Capacity gate: avoid pulling a new job while local ComfyUI is busy
+                if self.is_busy:
+                    logger.debug(
+                        "ℹ️\u2009 Nilor-Nodes (worker_consumer): Skipping poll; worker is busy executing a job."
+                    )
+                    await asyncio.sleep(5)
+                    continue
+
                 logger.debug(
                     "ℹ️\u2009 Nilor-Nodes (worker_consumer): Polling for messages..."
                 )
@@ -292,7 +347,7 @@ class WorkerConsumer:
                                     QueueUrl=self.jobs_queue_url,
                                     ReceiptHandle=message["ReceiptHandle"],
                                 )
-                            logger.info(
+                            logger.debug(
                                 f"ℹ️\u2009 Nilor-Nodes (worker_consumer): Deleted message {message['MessageId']} from queue."
                             )
                         except json.JSONDecodeError:
@@ -395,17 +450,35 @@ class WorkerConsumer:
     async def _submit_job_to_comfyui(self, content_id, workflow_data):
         """Submits a single job to the ComfyUI API."""
         try:
+            # Attach/override websocket client_id so server targets events to this worker
+            payload = (
+                dict(workflow_data)
+                if isinstance(workflow_data, dict)
+                else workflow_data
+            )
+            if isinstance(payload, dict):
+                # Force top-level client_id to this worker's stable ID
+                payload["client_id"] = self.worker_client_id
+                # Ensure extra_data exists and force its client_id too
+                extra = payload.get("extra_data") or {}
+                if isinstance(extra, dict):
+                    extra["client_id"] = self.worker_client_id
+                    payload["extra_data"] = extra
+
             async with aiohttp.ClientSession() as session:
                 async with session.post(
-                    COMFYUI_API_URL, json=workflow_data, timeout=30
+                    COMFYUI_API_URL, json=payload, timeout=30
                 ) as response:
                     response.raise_for_status()
                     response_json = await response.json()
                     prompt_id = response_json.get("prompt_id")
-                    logger.info(
+                    logger.debug(
                         f"✅ Nilor-Nodes (worker_consumer): Successfully submitted job to ComfyUI. Prompt ID: {prompt_id}"
                     )
                     self.prompt_id_to_content_id_map[prompt_id] = content_id
+                    # Mark worker busy after successful submission to avoid over-queuing on this machine
+                    self.is_busy = True
+                    self.current_prompt_id = prompt_id
 
             # No need to delete here, the consume_loop handles message deletion
         except aiohttp.ClientError as e:
@@ -452,6 +525,33 @@ class WorkerConsumer:
                 f"🛑\u2009 Nilor-Nodes (worker_consumer): Failed to send status update for content {content_id}: {e}",
                 exc_info=True,
             )
+
+    def _finalize_prompt(self, prompt_id, reason: str | None = None):
+        # No-op if we're not currently busy; avoids redundant work on duplicate signals
+        if not self.is_busy:
+            return
+        try:
+            if reason:
+                logger.info(
+                    f"✅ Nilor-Nodes (worker_consumer): Finalizing prompt via '{reason}'. Using prompt_id={prompt_id}"
+                )
+            content_id = self.prompt_id_to_content_id_map.pop(prompt_id, None)
+            if content_id is not None:
+                self.content_context_by_content_id.pop(content_id, None)
+            self.sent_running_status_prompts.discard(prompt_id)
+        finally:
+            # Only clear busy/state if this finalize corresponds to the current in-flight prompt
+            if self.current_prompt_id == prompt_id:
+                self.current_prompt_id = None
+                self.is_busy = False
+
+    @staticmethod
+    def _normalize_node_id(node_id):
+        if node_id is None:
+            return None
+        if isinstance(node_id, str) and node_id.strip() in ("", "None"):
+            return None
+        return node_id
 
 
 async def consume_jobs():
