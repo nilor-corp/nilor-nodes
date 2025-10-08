@@ -16,7 +16,7 @@ import aiohttp
 import websockets
 from aiobotocore.session import get_session
 from dotenv import load_dotenv
-from botocore.exceptions import EndpointConnectionError
+from botocore.exceptions import EndpointConnectionError, ClientError
 from .logger import logger
 
 # --- Load Environment Variables ---
@@ -305,7 +305,29 @@ class WorkerConsumer:
                             logger.error(
                                 f"🛑\u2009 Nilor-Nodes (worker_consumer): Processing failed for message {message['MessageId']}: {e}. It will be returned to the queue for retry."
                             )
+                except ClientError as e:
+                    # Some SQS providers/endpoints may sporadically return 503 for ReceiveMessage when the queue is idle
+                    error_code = None
+                    try:
+                        error_code = e.response.get("Error", {}).get("Code")
+                    except Exception:
+                        pass
+                    operation_name = getattr(e, "operation_name", "")
+                    if operation_name == "ReceiveMessage" and str(error_code) in (
+                        "503",
+                        "ServiceUnavailable",
+                    ):
+                        logger.debug(
+                            "ℹ️\u2009 Nilor-Nodes (worker_consumer): Queue is empty or endpoint timed out (ReceiveMessage 503). Polling again shortly..."
+                        )
+                        # await asyncio.sleep(2)
+                        continue
 
+                    # Unhandled ClientError; fall back to generic handling
+                    logger.error(
+                        f"🛑\u2009 Nilor-Nodes (worker_consumer): SQS client error during ReceiveMessage: {e}"
+                    )
+                    await asyncio.sleep(10)
                 except EndpointConnectionError as e:
                     # Lost connection to SQS; reset and re-initialize on next loop
                     logger.warning(
