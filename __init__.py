@@ -1,6 +1,7 @@
 import os
 import threading
 import asyncio
+import logging
 from dotenv import load_dotenv
 
 # --- Nilor-Nodes Custom Node Registration and Startup ---
@@ -17,6 +18,12 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 dotenv_path = os.path.join(current_dir, ".env")
 # Load the .env file, overriding any pre-existing process env for these keys
 load_dotenv(dotenv_path=dotenv_path, override=True)
+
+
+# --- Package Logger (applied early for all nilor-nodes modules) ---
+from .logger import configure_from_env, logger
+
+configure_from_env()
 
 
 # --- Background Services ---

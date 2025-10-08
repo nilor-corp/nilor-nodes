@@ -19,6 +19,7 @@ import cv2
 import warnings
 from .utils import pil2tensor, tensor2pil
 import logging
+from .logger import logger
 from comfy.utils import common_upscale
 from comfy import model_management
 import sys
@@ -31,7 +32,7 @@ if _kj_nodes_path not in sys.path:
 try:
     from image_nodes import ImagePadKJ  # type: ignore
 except Exception as _e:
-    logging.warning(
+    logger.warning(
         f"⚠️\u2009 Nilor-Nodes (nilornodes): Could not import ImagePadKJ from comfyui-kjnodes ({_kj_nodes_path}): {_e}"
     )
 
@@ -428,7 +429,7 @@ class NilorSaveEXRArbitrary:
         self, channels=None, filename_prefix="output", prompt=None, extra_pnginfo=None
     ):
 
-        logging.info(
+        logger.info(
             "ℹ️\u2009 Nilor-Nodes (SaveEXRArbitrary): Running save_exr_arbitrary"
         )
         # print(f"channels: {channels}")
@@ -442,7 +443,7 @@ class NilorSaveEXRArbitrary:
         try:
             actual_channels[0]
         except TypeError:
-            logging.error(
+            logger.error(
                 "🛑\u2009 Nilor-Nodes (SaveEXRArbitrary): actual_channels is not subscriptable"
             )
             return
@@ -533,11 +534,11 @@ class NilorSaveEXRArbitrary:
             exr_file.writePixels(channel_data)
             exr_file.close()
 
-            logging.info(
+            logger.info(
                 f"✅\u2009 Nilor-Nodes (SaveEXRArbitrary): EXR file saved successfully to {writepath}"
             )
         except Exception as e:
-            logging.error(
+            logger.error(
                 f"🛑\u2009 Nilor-Nodes (SaveEXRArbitrary): Failed to write EXR file: {e}"
             )
 
@@ -822,14 +823,14 @@ class NilorOutputFilenameString:
 
         if unique_id is not None and extra_pnginfo is not None:
             if not isinstance(extra_pnginfo, list):
-                logging.error(
+                logger.error(
                     "🛑\u2009 Nilor-Nodes (OutputFilenameString): extra_pnginfo is not a list"
                 )
             elif (
                 not isinstance(extra_pnginfo[0], dict)
                 or "workflow" not in extra_pnginfo[0]
             ):
-                logging.error(
+                logger.error(
                     "🛑\u2009 Nilor-Nodes (OutputFilenameString): extra_pnginfo[0] is not a dict or missing 'workflow' key"
                 )
             else:
@@ -1591,7 +1592,7 @@ Resizes images with optional aspect preservation, padding/cropping, and sub-batc
                 bytes_per_elem = image.element_size()
                 est_total_bytes = B * height * width * C * bytes_per_elem
                 est_mb = est_total_bytes / (1024 * 1024)
-                logging.info(
+                logger.info(
                     f"ℹ️\u2009 Nilor-Nodes (NilorImageResizeV2) Estimated output ~{est_mb:.2f} MB."
                 )
             except:
@@ -1718,7 +1719,7 @@ Resizes images with optional aspect preservation, padding/cropping, and sub-batc
                         sub_out_mask.cpu() if sub_out_mask is not None else None
                     )
                 try:
-                    logging.info(
+                    logger.info(
                         f"ℹ️\u2009 Nilor-Nodes (NilorImageResizeV2) Batch {current_batch}/{total_batches} · images {end_idx}/{B}"
                     )
                 except:
@@ -1729,7 +1730,7 @@ Resizes images with optional aspect preservation, padding/cropping, and sub-batc
             else:
                 out_mask = None
 
-        logging.info(f"✅\u2009 Nilor-Nodes (NilorImageResizeV2) All batches complete.")
+        logger.info(f"✅\u2009 Nilor-Nodes (NilorImageResizeV2) All batches complete.")
 
         return (
             out_image.cpu(),

@@ -48,11 +48,6 @@ AWS_DEFAULT_REGION = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
 POLL_WAIT_TIME_SECONDS = 20  # SQS Long Polling
 MAX_MESSAGES = 1
 
-# --- Setup Logging ---
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
-
 
 class WorkerConsumer:
     def __init__(self):
@@ -83,12 +78,12 @@ class WorkerConsumer:
                 return True
             except EndpointConnectionError as e:
                 # Quiet the noisy traceback by logging a concise warning instead
-                logging.warning(
+                logger.warning(
                     f"⚠️\u2009 Nilor-Nodes (worker_consumer): SQS endpoint is unreachable at {SQS_ENDPOINT_URL}: {e}. "
                 )
                 return False
             except Exception as e:
-                logging.error(
+                logger.error(
                     f"⚠️\u2009 Nilor-Nodes (worker_consumer): Failed to initialize SQS queues: {e}"
                 )
                 return False
@@ -99,7 +94,7 @@ class WorkerConsumer:
             response = await client.get_queue_url(QueueName=queue_name)
             return response["QueueUrl"]
         except client.exceptions.QueueDoesNotExist:
-            logging.error(
+            logger.error(
                 f"⚠️\u2009 Nilor-Nodes (worker_consumer): SQS queue '{queue_name}' does not exist."
             )
             raise
@@ -108,7 +103,7 @@ class WorkerConsumer:
         while True:
             try:
                 async with websockets.connect(COMFYUI_WS_URL) as websocket:
-                    logging.info(
+                    logger.info(
                         f"ℹ️\u2009 Nilor-Nodes (worker_consumer): Connected to ComfyUI websocket at {COMFYUI_WS_URL}"
                     )
                     while True:
@@ -143,7 +138,7 @@ class WorkerConsumer:
                                     running_status = policy.get(
                                         "running_status", "running"
                                     )
-                                    logging.info(
+                                    logger.info(
                                         f"ℹ️\u2009 Nilor-Nodes (worker_consumer): Execution started for prompt_id {prompt_id} (content_id: {content_id}) via '{event_type}' event. Sending '{running_status}' status."
                                     )
                                     await self._send_status_update(
@@ -157,7 +152,7 @@ class WorkerConsumer:
 
                                 # Handle execution errors
                                 elif event_type == "execution_error":
-                                    logging.error(
+                                    logger.error(
                                         f"🛑\u2009 Nilor-Nodes (worker_consumer): Received execution error for prompt_id {prompt_id}: {data}"
                                     )
                                     if prompt_id in self.prompt_id_to_content_id_map:
@@ -190,7 +185,7 @@ class WorkerConsumer:
 
                                 # Log successful execution
                                 elif event_type == "executed":
-                                    logging.info(
+                                    logger.info(
                                         f"✅ Nilor-Nodes (worker_consumer): Prompt {prompt_id} executed successfully according to websocket event. Final node is responsible for sending completion message."
                                     )
                                     if prompt_id in self.prompt_id_to_content_id_map:
@@ -205,28 +200,28 @@ class WorkerConsumer:
                                     self.sent_running_status_prompts.discard(prompt_id)
 
                                 elif event_type not in ["progress", "progress_state"]:
-                                    logging.info(
+                                    logger.info(
                                         f"ℹ️\u2009 Nilor-Nodes (worker_consumer): Received ComfyUI websocket event of type '{event_type}': {data}"
                                     )
 
                             except json.JSONDecodeError:
-                                logging.debug(
+                                logger.debug(
                                     "⚠️\u2009 Nilor-Nodes (worker_consumer): Received non-JSON text message from websocket, ignoring."
                                 )
                         else:
-                            logging.debug(
+                            logger.debug(
                                 "⚠️\u2009 Nilor-Nodes (worker_consumer): Received binary message from websocket, ignoring."
                             )
             except (
                 websockets.exceptions.ConnectionClosedError,
                 ConnectionRefusedError,
             ) as e:
-                logging.warning(
+                logger.warning(
                     f"🛑\u2009 Nilor-Nodes (worker_consumer): ComfyUI websocket connection failed: {e}. Retrying in 5 seconds..."
                 )
                 await asyncio.sleep(5)
             except Exception as e:
-                logging.error(
+                logger.error(
                     f"🛑\u2009 Nilor-Nodes (worker_consumer): An unexpected error occurred in the websocket listener: {e}",
                     exc_info=True,
                 )
@@ -241,6 +236,7 @@ class WorkerConsumer:
         listener_task = asyncio.create_task(self.listen_for_comfy_events())
 
         try:
+
             while True:
                 # Ensure SQS is initialized; if not, keep attempting to initialize
                 if self.jobs_queue_url is None or self.status_updates_queue_url is None:
@@ -251,11 +247,11 @@ class WorkerConsumer:
                         )
                         await asyncio.sleep(10)
                         continue
-                    logging.info(
+                    logger.info(
                         f"ℹ️\u2009 Nilor-Nodes (worker_consumer): Starting worker consumer. Polling queue: {self.jobs_queue_url}"
                     )
 
-                logging.debug(
+                logger.debug(
                     "ℹ️\u2009 Nilor-Nodes (worker_consumer): Polling for messages..."
                 )
                 try:
@@ -274,7 +270,7 @@ class WorkerConsumer:
 
                     messages = response.get("Messages", [])
                     if not messages:
-                        logging.debug(
+                        logger.debug(
                             "ℹ️\u2009 Nilor-Nodes (worker_consumer): No messages received."
                         )
                         continue
@@ -295,43 +291,43 @@ class WorkerConsumer:
                                     QueueUrl=self.jobs_queue_url,
                                     ReceiptHandle=message["ReceiptHandle"],
                                 )
-                            logging.info(
+                            logger.info(
                                 f"ℹ️\u2009 Nilor-Nodes (worker_consumer): Deleted message {message['MessageId']} from queue."
                             )
                         except json.JSONDecodeError:
                             # This is a poison pill message, log it but don't retry.
                             # It will be moved to the DLQ after enough failed receives.
-                            logging.error(
+                            logger.error(
                                 f"🛑\u2009 Nilor-Nodes (worker_consumer): Message {message['MessageId']} is a poison pill (JSON decode failed) and will be ignored."
                             )
                         except Exception as e:
-                            logging.error(
+                            logger.error(
                                 f"🛑\u2009 Nilor-Nodes (worker_consumer): Processing failed for message {message['MessageId']}: {e}. It will be returned to the queue for retry."
                             )
 
                 except EndpointConnectionError as e:
                     # Lost connection to SQS; reset and re-initialize on next loop
-                    logging.warning(
+                    logger.warning(
                         f"⚠️\u2009 Nilor-Nodes (worker_consumer): Lost connection to SQS at {SQS_ENDPOINT_URL}: {e}. Will retry initialization in 10 seconds."
                     )
                     self.jobs_queue_url = None
                     self.status_updates_queue_url = None
                     await asyncio.sleep(10)
                 except Exception as e:
-                    logging.error(
+                    logger.error(
                         f"🛑\u2009 Nilor-Nodes (worker_consumer): An error occurred in the consume loop: {e}"
                     )
                     await asyncio.sleep(10)  # Wait before retrying
         finally:
             listener_task.cancel()
             await asyncio.gather(listener_task, return_exceptions=True)
-            logging.info(
+            logger.info(
                 "⚠️\u2009 Nilor-Nodes (worker_consumer): Websocket listener stopped."
             )
 
     async def process_message(self, message):
         """Processes a single SQS message."""
-        logging.info(
+        logger.info(
             f"ℹ️\u2009 Nilor-Nodes (worker_consumer): Processing message: {message['MessageId']}"
         )
 
@@ -347,7 +343,7 @@ class WorkerConsumer:
 
             # Validate that the payload has the required keys before submitting.
             if not content_id or "prompt" not in job_payload:
-                logging.error(
+                logger.error(
                     f"🛑\u2009 Nilor-Nodes (worker_consumer): Invalid message format: missing 'content_id' or 'prompt'. Payload: {job_payload}"
                 )
                 return
@@ -367,7 +363,7 @@ class WorkerConsumer:
                 self.content_context_by_content_id[content_id] = {}
 
         except Exception as e:
-            logging.error(
+            logger.error(
                 f"🛑\u2009 Nilor-Nodes (worker_consumer): An unexpected error occurred while processing message: {e}. It will be retried."
             )
             # Re-raise to prevent deletion from queue if we want SQS to handle retry
@@ -383,22 +379,22 @@ class WorkerConsumer:
                     response.raise_for_status()
                     response_json = await response.json()
                     prompt_id = response_json.get("prompt_id")
-                    logging.info(
+                    logger.info(
                         f"✅ Nilor-Nodes (worker_consumer): Successfully submitted job to ComfyUI. Prompt ID: {prompt_id}"
                     )
                     self.prompt_id_to_content_id_map[prompt_id] = content_id
 
             # No need to delete here, the consume_loop handles message deletion
         except aiohttp.ClientError as e:
-            logging.error(
+            logger.error(
                 f"🛑\u2009 Nilor-Nodes (worker_consumer): Failed to submit job to ComfyUI: {e}. Message will be retried."
             )
         except (json.JSONDecodeError, KeyError) as e:
-            logging.error(
+            logger.error(
                 f"🛑\u2009 Nilor-Nodes (worker_consumer): Failed to parse ComfyUI response: {e}. Discarding malformed response."
             )
         except Exception as e:
-            logging.error(
+            logger.error(
                 f"🛑\u2009 Nilor-Nodes (worker_consumer): An unexpected error occurred while submitting job to ComfyUI: {e}",
                 exc_info=True,
             )
@@ -425,11 +421,11 @@ class WorkerConsumer:
                 await client.send_message(
                     QueueUrl=self.status_updates_queue_url, MessageBody=message_body
                 )
-            logging.info(
+            logger.info(
                 f"✅ Nilor-Nodes (worker_consumer): Sent status update for content {content_id}: {status}"
             )
         except Exception as e:
-            logging.error(
+            logger.error(
                 f"🛑\u2009 Nilor-Nodes (worker_consumer): Failed to send status update for content {content_id}: {e}",
                 exc_info=True,
             )
