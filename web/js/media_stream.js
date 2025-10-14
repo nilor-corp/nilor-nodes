@@ -26,6 +26,7 @@ function setupMediaStreamOutput(node) {
         "venue",
         "canvas",
         "scene",
+        "job_type",
         "presigned_upload_url",
         "job_completions_queue_url",
         "output_object_keys",
