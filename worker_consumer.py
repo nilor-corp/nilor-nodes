@@ -2,7 +2,7 @@
 Worker Consumer Service for ComfyUI
 
 This script runs as a continuous background service on each ComfyUI worker.
-Its purpose is to poll the `jobs_to_process` SQS queue for new jobs,
+Its purpose is to poll the `jobs_to_process-comfyui` SQS queue for new jobs,
 submit them to the local ComfyUI server, and manage the message lifecycle.
 It also listens to the ComfyUI websocket to send a "running" status update
 at the precise moment that job execution begins.
@@ -38,7 +38,7 @@ else:
 # --- Configuration ---
 SQS_ENDPOINT_URL = os.getenv("SQS_ENDPOINT_URL", "http://localhost:9324")
 SQS_JOBS_TO_PROCESS_QUEUE_NAME = os.getenv(
-    "SQS_JOBS_TO_PROCESS_QUEUE_NAME", "jobs_to_process"
+    "SQS_JOBS_TO_PROCESS_QUEUE_NAME", "jobs_to_process-comfyui"
 )
 SQS_JOB_STATUS_UPDATES_QUEUE_NAME = os.getenv(
     "SQS_JOB_STATUS_UPDATES_QUEUE_NAME", "job_status_updates"
@@ -175,6 +175,7 @@ class WorkerConsumer:
                                         ctx.get("venue"),
                                         ctx.get("canvas"),
                                         ctx.get("scene"),
+                                        ctx.get("job_type"),
                                     )
                                     self.sent_running_status_prompts.add(prompt_id)
 
@@ -203,6 +204,7 @@ class WorkerConsumer:
                                                 ctx.get("venue"),
                                                 ctx.get("canvas"),
                                                 ctx.get("scene"),
+                                                ctx.get("job_type"),
                                             )
                                         except Exception:
                                             pass
@@ -419,6 +421,17 @@ class WorkerConsumer:
 
             content_id = job_payload.get("content_id")
 
+            # Prefer execution_spec for other engines; ComfyUI strictly requires 'prompt'
+            if "execution_spec" in job_payload and "prompt" not in job_payload:
+                logger.warning(
+                    f"⚠️\u2009 Nilor-Nodes (worker_consumer): Received 'execution_spec' without 'prompt'. ComfyUI path requires 'prompt'; skipping message {message['MessageId']}."
+                )
+                return
+            if "execution_spec" in job_payload and "prompt" in job_payload:
+                logger.debug(
+                    "ℹ️\u2009 Nilor-Nodes (worker_consumer): 'execution_spec' present alongside 'prompt'; ignoring 'execution_spec' for ComfyUI."
+                )
+
             # Validate that the payload has the required keys before submitting.
             if not content_id or "prompt" not in job_payload:
                 logger.error(
@@ -435,6 +448,7 @@ class WorkerConsumer:
                     "venue": job_payload.get("venue"),
                     "canvas": job_payload.get("canvas"),
                     "scene": job_payload.get("scene"),
+                    "job_type": job_payload.get("job_type"),
                     "status_policy": job_payload.get("status_policy") or {},
                 }
             except Exception:
@@ -496,7 +510,7 @@ class WorkerConsumer:
             )
 
     async def _send_status_update(
-        self, content_id, status, venue=None, canvas=None, scene=None
+        self, content_id, status, venue=None, canvas=None, scene=None, job_type=None
     ):
         try:
             body = {"content_id": content_id, "status": status}
@@ -506,6 +520,8 @@ class WorkerConsumer:
                 body["canvas"] = canvas
             if scene is not None:
                 body["scene"] = scene
+            if job_type is not None:
+                body["job_type"] = job_type
             message_body = json.dumps(body)
             async with self.session.create_client(
                 "sqs",

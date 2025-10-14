@@ -228,6 +228,10 @@ class MediaStreamOutput:
                     "STRING",
                     {"multiline": False, "default": "<auto-filled by system>"},
                 ),
+                "job_type": (
+                    "STRING",
+                    {"default": "<auto-filled by system>", "multiline": False},
+                ),
             },
             "hidden": {
                 "prompt": "PROMPT",
@@ -256,6 +260,7 @@ class MediaStreamOutput:
         output_name: str = "default_output",
         prompt=None,
         extra_pnginfo=None,
+        job_type: str | None = None,
     ):
         if not content_id:
             raise ValueError(
@@ -301,6 +306,8 @@ class MediaStreamOutput:
             "scene": scene,
             "outputs": final_outputs_for_sqs,
         }
+        if job_type:
+            completion_message["job_type"] = job_type
 
         try:
             # Re-initialize the client inside the execution to ensure it picks up env vars correctly.
