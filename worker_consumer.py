@@ -57,6 +57,7 @@ class WorkerConsumer:
 
         # Stable client_id for routing events to this worker
         self.cfg = cfg
+        self.comfy_client_enabled = bool(cfg.comfy.client_enabled)
         self.worker_client_id = cfg.worker.worker_client_id
 
         # Computed endpoints (keep existing for websocket; HTTP now via client)
@@ -107,6 +108,14 @@ class WorkerConsumer:
     async def listen_for_comfy_events(self):
         while True:
             try:
+                # If client disabled or missing, pause and retry later to keep loop simple
+                if not self.comfy_client_enabled or self.comfy_client is None:
+                    logger.debug(
+                        "ℹ️\u2009 Nilor-Nodes (worker_consumer): Comfy client disabled or not constructed; skipping WS listen this cycle."
+                    )
+                    await asyncio.sleep(5)
+                    continue
+
                 # Consume events from client iterator (handles reconnects internally)
                 async for evt in self.comfy_client.ws_connect(self.worker_client_id):
                     event_type = evt.get("type")
@@ -215,7 +224,6 @@ class WorkerConsumer:
                                 effective_prompt_id,
                                 reason="execution_success",
                             )
-
             except Exception as e:
                 logger.error(
                     f"🛑\u2009 Nilor-Nodes (worker_consumer): Websocket listener error: {e}",
@@ -431,17 +439,27 @@ class WorkerConsumer:
                     extra["client_id"] = self.worker_client_id
                     payload["extra_data"] = extra
 
-            if self.comfy_client is None:
-                # Construct client using shared session when available; fallback to creating a temp one
-                self.comfy_client = ComfyUILocalClient(
-                    base_url=self.cfg.comfy.api_url,
-                    ws_url=self.cfg.comfy.ws_url,
-                    session=self.http_session,
-                    logger=logger,
-                    timeout=float(self.cfg.comfy.timeout_s),
-                )
-
-            prompt_id = await self.comfy_client.submit_prompt(payload)
+            if self.comfy_client_enabled:
+                if self.comfy_client is None:
+                    # Construct client using shared session when available; fallback to creating a temp one
+                    self.comfy_client = ComfyUILocalClient(
+                        base_url=self.cfg.comfy.api_url,
+                        ws_url=self.cfg.comfy.ws_url,
+                        session=self.http_session,
+                        logger=logger,
+                        timeout=float(self.cfg.comfy.timeout_s),
+                    )
+                prompt_id = await self.comfy_client.submit_prompt(payload)
+            else:
+                if self.http_session is None:
+                    # Lazily create if not created by the loop yet
+                    self.http_session = aiohttp.ClientSession()
+                async with self.http_session.post(
+                    self.comfy_api_url, json=payload, timeout=self.cfg.comfy.timeout_s
+                ) as response:
+                    response.raise_for_status()
+                    response_json = await response.json()
+                    prompt_id = response_json.get("prompt_id")
             logger.debug(
                 f"✅ Nilor-Nodes (worker_consumer): Successfully submitted job to ComfyUI. Prompt ID: {prompt_id}"
             )
@@ -532,12 +550,15 @@ async def consume_jobs():
     consumer = WorkerConsumer(cfg=_CFG)
     # Initialize shared HTTP session at startup
     consumer.http_session = aiohttp.ClientSession()
-    # Construct ComfyUI client using shared session
-    consumer.comfy_client = ComfyUILocalClient(
-        base_url=_CFG.comfy.api_url,
-        ws_url=_CFG.comfy.ws_url,
-        session=consumer.http_session,
-        logger=logger,
-        timeout=float(_CFG.comfy.timeout_s),
-    )
+
+    # Construct ComfyUI client using shared session when enabled
+    if getattr(_CFG.comfy, "client_enabled", True):
+        consumer.comfy_client = ComfyUILocalClient(
+            base_url=_CFG.comfy.api_url,
+            ws_url=_CFG.comfy.ws_url,
+            session=consumer.http_session,
+            logger=logger,
+            timeout=float(_CFG.comfy.timeout_s),
+        )
+
     await consumer.consume_loop()
