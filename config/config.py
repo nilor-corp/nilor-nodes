@@ -151,38 +151,50 @@ def _apply_env_overrides(cfg: NilorNodesConfig) -> None:
     sqs_enabled = os.getenv("NILOR_SQS_ENABLED", cfg.sqs_enabled)
     cfg.sqs_enabled = _coerce_bool(sqs_enabled)
 
-    # Comfy
-    cfg.comfy.api_url = os.getenv("NILOR_COMFYUI_API_URL", cfg.comfy.api_url)
-    cfg.comfy.ws_url = os.getenv("NILOR_COMFYUI_WS_URL", cfg.comfy.ws_url)
-    cfg.comfy.timeout_s = int(
+    # Comfy (rebuild frozen dataclass)
+    comfy_api_url = os.getenv("NILOR_COMFYUI_API_URL", cfg.comfy.api_url)
+    comfy_ws_url = os.getenv("NILOR_COMFYUI_WS_URL", cfg.comfy.ws_url)
+    comfy_timeout_s = int(
         os.getenv("NILOR_COMFY_API_TIMEOUT_SECONDS", cfg.comfy.timeout_s)
     )
+    cfg.comfy = ComfyApiConfig(
+        api_url=str(comfy_api_url), ws_url=str(comfy_ws_url), timeout_s=comfy_timeout_s
+    )
 
-    # Worker
-    cfg.worker.sqs_endpoint_url = os.getenv(
+    # Worker (rebuild frozen dataclass)
+    worker_sqs_endpoint_url = os.getenv(
         "NILOR_SQS_ENDPOINT_URL", cfg.worker.sqs_endpoint_url
     )
-    cfg.worker.jobs_queue = os.getenv(
+    worker_jobs_queue = os.getenv(
         "NILOR_SQS_JOBS_TO_PROCESS_QUEUE_NAME", cfg.worker.jobs_queue
     )
-    cfg.worker.status_queue = os.getenv(
+    worker_status_queue = os.getenv(
         "NILOR_SQS_JOB_STATUS_UPDATES_QUEUE_NAME", cfg.worker.status_queue
     )
-    cfg.worker.poll_wait_s = int(
+    worker_poll_wait_s = int(
         os.getenv("NILOR_SQS_POLL_WAIT_TIME", cfg.worker.poll_wait_s)
     )
-    cfg.worker.max_messages = int(
+    worker_max_messages = int(
         os.getenv("NILOR_SQS_MAX_MESSAGES", cfg.worker.max_messages)
     )
-    cfg.worker.aws_access_key_id = os.getenv(
+    worker_access_key = os.getenv(
         "NILOR_AWS_ACCESS_KEY_ID", cfg.worker.aws_access_key_id
     )
-    cfg.worker.aws_secret_access_key = os.getenv(
+    worker_secret_key = os.getenv(
         "NILOR_AWS_SECRET_ACCESS_KEY", cfg.worker.aws_secret_access_key
     )
-    cfg.worker.aws_region = os.getenv("NILOR_AWS_DEFAULT_REGION", cfg.worker.aws_region)
-    cfg.worker.worker_client_id = os.getenv(
-        "NILOR_WORKER_CLIENT_ID", cfg.worker.worker_client_id
+    worker_region = os.getenv("NILOR_AWS_DEFAULT_REGION", cfg.worker.aws_region)
+    worker_client_id = os.getenv("NILOR_WORKER_CLIENT_ID", cfg.worker.worker_client_id)
+    cfg.worker = WorkerConfig(
+        sqs_endpoint_url=str(worker_sqs_endpoint_url),
+        jobs_queue=str(worker_jobs_queue),
+        status_queue=str(worker_status_queue),
+        poll_wait_s=worker_poll_wait_s,
+        max_messages=worker_max_messages,
+        aws_access_key_id=str(worker_access_key),
+        aws_secret_access_key=str(worker_secret_key),
+        aws_region=str(worker_region),
+        worker_client_id=str(worker_client_id),
     )
 
     # Re-validate after overrides
