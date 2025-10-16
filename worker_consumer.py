@@ -545,4 +545,21 @@ async def consume_jobs():
         timeout=float(_CFG.comfy.timeout_s),
     )
 
+    # Emit concise startup configuration summary (no secrets)
+    try:
+        logger.info(
+            (
+                "ℹ️\u2009 Nilor-Nodes: startup config — Comfy API=%s, WS=%s, timeout_s=%s, "
+                "SQS endpoint=%s, jobs_queue=%s, status_queue=%s"
+            ),
+            _CFG.comfy.api_url,
+            _CFG.comfy.ws_url,
+            str(_CFG.comfy.timeout_s),
+            _CFG.worker.sqs_endpoint_url,
+            _CFG.worker.jobs_queue,
+            _CFG.worker.status_queue,
+        )
+    except Exception:
+        pass
+
     await consumer.consume_loop()
