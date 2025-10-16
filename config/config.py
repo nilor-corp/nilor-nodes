@@ -39,7 +39,6 @@ class ComfyApiConfig:
         api_url: Base HTTP URL for the ComfyUI REST API (e.g., "http://127.0.0.1:8188").
         ws_url: Base WebSocket URL for ComfyUI events (e.g., "ws://127.0.0.1:8188").
         timeout_s: Request timeout in seconds for ComfyUI HTTP calls.
-        client_enabled: Feature flag to enable the thin client usage.
         retry_base_seconds: Base backoff seconds for idempotent retries.
         retry_multiplier: Exponential backoff multiplier.
         retry_jitter_seconds: Jitter range (±seconds) added to backoff.
@@ -52,7 +51,6 @@ class ComfyApiConfig:
     api_url: str
     ws_url: str
     timeout_s: int
-    client_enabled: bool
     retry_base_seconds: float
     retry_multiplier: float
     retry_jitter_seconds: float
@@ -118,9 +116,6 @@ class NilorNodesConfig(BaseConfig):
             api_url=str(config_dict.get("NILOR_COMFYUI_API_URL", "")).strip(),
             ws_url=str(config_dict.get("NILOR_COMFYUI_WS_URL", "")).strip(),
             timeout_s=int(config_dict.get("NILOR_COMFY_API_TIMEOUT_SECONDS", 30)),
-            client_enabled=_coerce_bool(
-                config_dict.get("NILOR_COMFY_CLIENT_ENABLED", True)
-            ),
             retry_base_seconds=float(
                 config_dict.get("NILOR_COMFY_RETRY_BASE_SECONDS", 0.25)
             ),
@@ -197,9 +192,6 @@ def _apply_env_overrides(cfg: NilorNodesConfig) -> None:
     comfy_timeout_s = int(
         os.getenv("NILOR_COMFY_API_TIMEOUT_SECONDS", cfg.comfy.timeout_s)
     )
-    comfy_client_enabled = _coerce_bool(
-        os.getenv("NILOR_COMFY_CLIENT_ENABLED", cfg.comfy.client_enabled)
-    )
     comfy_retry_base = float(
         os.getenv("NILOR_COMFY_RETRY_BASE_SECONDS", cfg.comfy.retry_base_seconds)
     )
@@ -233,7 +225,6 @@ def _apply_env_overrides(cfg: NilorNodesConfig) -> None:
         api_url=str(comfy_api_url),
         ws_url=str(comfy_ws_url),
         timeout_s=comfy_timeout_s,
-        client_enabled=comfy_client_enabled,
         retry_base_seconds=comfy_retry_base,
         retry_multiplier=comfy_retry_multiplier,
         retry_jitter_seconds=comfy_retry_jitter,
