@@ -8,8 +8,13 @@ behavior will be added in subsequent commits.
 
 from __future__ import annotations
 
+import asyncio
+import json
+import random
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, Dict, Optional, Protocol, TypedDict
+from typing import Any, AsyncIterator, Dict, Optional, Protocol, TypedDict, Tuple
+
+from urllib.parse import quote, urlparse
 
 
 __all__ = [
@@ -151,6 +156,12 @@ class ComfyUILocalClient(ComfyUIClientProtocol):
         self._session = session  # type: ignore[assignment]
         self._logger = logger
         self._timeout: float = float(timeout)
+        # Backoff defaults per plan (commit 3)
+        self._retry_base_seconds: float = 0.25
+        self._retry_multiplier: float = 2.0
+        self._retry_jitter_seconds: float = 0.25
+        self._retry_max_sleep_seconds: float = 4.0
+        self._retry_max_attempts: int = 3
 
     # Lifecycle methods may be implemented later; for now they act as no-ops.
     async def __aenter__(self) -> "ComfyUILocalClient":
@@ -163,20 +174,454 @@ class ComfyUILocalClient(ComfyUIClientProtocol):
 
     # Protocol methods — to be implemented in subsequent commits.
     async def submit_prompt(self, payload: Dict[str, Any]) -> str:  # type: ignore[override]
-        raise NotImplementedError("submit_prompt is not implemented yet")
+        route = "/prompt"
+        method = "POST"
+        url = self._join_http(route)
+        try:
+            data = await self._http_request_json(
+                method,
+                url,
+                json_payload=payload,
+                timeout_s=self._timeout,
+                retry_idempotent=False,
+            )
+        except asyncio.TimeoutError as e:
+            raise ComfyUIClientTimeout(
+                f"Timeout while calling {method} {route}",
+                route=route,
+                method=method,
+                code="timeout",
+            ) from e
+        except _MappedHttpError as e:
+            raise e.to_public_error(route=route, method=method)
+        except _MappedConnError as e:
+            raise e.to_public_error(route=route, method=method)
+
+        prompt_id = data.get("prompt_id") if isinstance(data, dict) else None
+        if not isinstance(prompt_id, str) or not prompt_id.strip():
+            snippet = _safe_preview(data)
+            raise ComfyUIClientError(
+                "Invalid response payload: missing non-empty prompt_id",
+                route=route,
+                method=method,
+                code="bad_json",
+                body_snippet=snippet,
+            )
+        return prompt_id
 
     async def get_system_stats(self) -> SystemStats:  # type: ignore[override]
-        raise NotImplementedError("get_system_stats is not implemented yet")
+        route = "/system_stats"
+        method = "GET"
+        url = self._join_http(route)
+        try:
+            data = await self._http_request_json(
+                method,
+                url,
+                json_payload=None,
+                timeout_s=self._timeout,
+                retry_idempotent=True,
+            )
+        except asyncio.TimeoutError as e:
+            raise ComfyUIClientTimeout(
+                f"Timeout while calling {method} {route}",
+                route=route,
+                method=method,
+                code="timeout",
+            ) from e
+        except _MappedHttpError as e:
+            raise e.to_public_error(route=route, method=method)
+        except _MappedConnError as e:
+            raise e.to_public_error(route=route, method=method)
+
+        # Parse known fields, tolerate missing/unknown
+        vram_free = (
+            _coerce_optional_float(data.get("vram_free"))
+            if isinstance(data, dict)
+            else None
+        )
+        torch_vram_free = (
+            _coerce_optional_float(data.get("torch_vram_free"))
+            if isinstance(data, dict)
+            else None
+        )
+        ram_total = _coerce_optional_float(
+            (data.get("ram_total")) if isinstance(data, dict) else None
+        )
+        ram_free = _coerce_optional_float(
+            (data.get("ram_free")) if isinstance(data, dict) else None
+        )
+        return SystemStats(
+            vram_free=vram_free,
+            torch_vram_free=torch_vram_free,
+            ram_total=ram_total,
+            ram_free=ram_free,
+        )
 
     async def free(self, *, free_memory: bool = False, unload_models: bool = False) -> None:  # type: ignore[override]
-        raise NotImplementedError("free is not implemented yet")
+        route = "/free"
+        method = "POST"
+        url = self._join_http(route)
+        body = {"free_memory": bool(free_memory), "unload_models": bool(unload_models)}
+        try:
+            await self._http_request_json(
+                method,
+                url,
+                json_payload=body,
+                timeout_s=self._timeout,
+                retry_idempotent=True,  # idempotent when flags identical
+            )
+        except asyncio.TimeoutError as e:
+            raise ComfyUIClientTimeout(
+                f"Timeout while calling {method} {route}",
+                route=route,
+                method=method,
+                code="timeout",
+            ) from e
+        except _MappedHttpError as e:
+            raise e.to_public_error(route=route, method=method)
+        except _MappedConnError as e:
+            raise e.to_public_error(route=route, method=method)
 
     async def ws_connect(self, client_id: str) -> AsyncIterator[WsEvent]:  # type: ignore[override]
         raise NotImplementedError("ws_connect is not implemented yet")
 
 
-# Deferred import used only for typing to avoid mandatory runtime dependency here.
-try:  # pragma: no cover - typing aid only
-    import aiohttp  # type: ignore
-except Exception:  # pragma: no cover - typing aid only
-    aiohttp = None  # type: ignore
+# Runtime dependency; imported here to avoid issues if module is scanned without execution
+import aiohttp  # type: ignore
+
+
+# ---- Internal helpers (HTTP) ----
+
+
+def _coerce_optional_float(value: Any) -> Optional[float]:
+    try:
+        if value is None:
+            return None
+        return float(value)
+    except Exception:
+        return None
+
+
+def _is_transient_status(status: int) -> bool:
+    return status == 429 or 500 <= status <= 599
+
+
+def _safe_preview(data: Any, limit: int = 512) -> str:
+    try:
+        text = json.dumps(data, ensure_ascii=False)
+    except Exception:
+        text = str(data)
+    if len(text) > limit:
+        return text[:limit] + "…"
+    return text
+
+
+class _MappedHttpError(Exception):
+    def __init__(self, *, status: Optional[int], body_snippet: Optional[str]) -> None:
+        self.status = status
+        self.body_snippet = body_snippet
+
+    def to_public_error(self, *, route: str, method: str) -> ComfyUIClientError:
+        return ComfyUIClientError(
+            f"HTTP error while calling {method} {route}",
+            route=route,
+            method=method,
+            status=self.status,
+            code="http_error",
+            body_snippet=self.body_snippet,
+        )
+
+
+class _MappedConnError(Exception):
+    def __init__(self, *, code: str = "connection_error") -> None:
+        self.code = code
+
+    def to_public_error(self, *, route: str, method: str) -> ComfyUIClientError:
+        return ComfyUIClientError(
+            f"Connection error while calling {method} {route}",
+            route=route,
+            method=method,
+            code=self.code,
+        )
+
+
+async def _read_limited_text(resp: aiohttp.ClientResponse, limit: int = 512) -> str:
+    try:
+        raw = await resp.read()
+        # Truncate at byte level then decode safely
+        raw = raw[:limit]
+        return raw.decode("utf-8", errors="replace")
+    except Exception:
+        return ""
+
+
+def _with_jitter(seconds: float, jitter: float) -> float:
+    if jitter <= 0:
+        return seconds
+    return max(0.0, seconds + random.uniform(-jitter, jitter))
+
+
+def _next_backoff(
+    attempt_index: int,
+    base: float,
+    multiplier: float,
+    jitter: float,
+    max_sleep: float,
+) -> float:
+    # attempt_index is 0-based
+    delay = base * (multiplier**attempt_index)
+    delay = min(delay, max_sleep)
+    return _with_jitter(delay, jitter)
+
+
+def _should_retry(
+    *,
+    retry_idempotent: bool,
+    exc: Optional[BaseException] = None,
+    status: Optional[int] = None,
+) -> bool:
+    if not retry_idempotent:
+        return False
+    if isinstance(exc, (asyncio.TimeoutError, aiohttp.ClientConnectionError)):
+        return True
+    if status is not None and _is_transient_status(status):
+        return True
+    return False
+
+
+def _finalize_attempts(
+    method: str,
+    url: str,
+    *,
+    last_exc: Optional[BaseException],
+    last_status: Optional[int],
+    last_body_snippet: Optional[str],
+) -> BaseException:
+    if isinstance(last_exc, asyncio.TimeoutError):
+        return ComfyUIClientTimeout(
+            f"Timeout while calling {method} {url}",
+            route=_route_from_url(url),
+            method=method,
+            code="timeout",
+        )
+    if isinstance(last_exc, aiohttp.ClientConnectionError):
+        return _MappedConnError().to_public_error(
+            route=_route_from_url(url), method=method
+        )
+    # Otherwise treat as HTTP error
+    return _MappedHttpError(
+        status=last_status, body_snippet=last_body_snippet
+    ).to_public_error(route=_route_from_url(url), method=method)
+
+
+def _route_from_url(url: str) -> str:
+    try:
+        parsed = urlparse(url)
+        return parsed.path or "/"
+    except Exception:
+        return url
+
+
+class _TempSession:
+    """Context manager that yields an aiohttp session, reusing if provided."""
+
+    def __init__(self, session: Optional[aiohttp.ClientSession]):
+        self._provided = session
+        self._owned: Optional[aiohttp.ClientSession] = None
+
+    async def __aenter__(self) -> aiohttp.ClientSession:
+        if self._provided is not None:
+            return self._provided
+        self._owned = aiohttp.ClientSession()
+        return self._owned
+
+    async def __aexit__(self, exc_type, exc, tb) -> None:  # type: ignore[override]
+        if self._owned is not None:
+            await self._owned.close()
+
+
+async def _json_or_text(resp: aiohttp.ClientResponse) -> Any:
+    ctype = resp.headers.get("Content-Type", "").lower()
+    text = await _read_limited_text(resp)  # limited read to use for both cases
+    if "json" in ctype:
+        try:
+            return json.loads(text)
+        except Exception:
+            # Fallthrough to treat as bad JSON
+            raise _MappedHttpError(status=resp.status, body_snippet=text)
+    # Not JSON; return raw text
+    return text
+
+
+async def _raise_for_status_with_snippet(resp: aiohttp.ClientResponse) -> None:
+    if 200 <= resp.status <= 299:
+        return
+    snippet = await _read_limited_text(resp)
+    raise _MappedHttpError(status=resp.status, body_snippet=snippet)
+
+
+async def _request_once(
+    method: str,
+    url: str,
+    *,
+    session: aiohttp.ClientSession,
+    json_payload: Optional[Dict[str, Any]],
+    timeout_s: float,
+) -> Tuple[Optional[int], Optional[str], Any]:
+    timeout = aiohttp.ClientTimeout(total=timeout_s)
+    try:
+        async with session.request(
+            method, url, json=json_payload, timeout=timeout
+        ) as resp:
+            status = resp.status
+            await _raise_for_status_with_snippet(resp)
+            # Success path: attempt to parse JSON body; if not JSON, return text
+            try:
+                data = await resp.json(content_type=None)
+            except aiohttp.ContentTypeError:
+                # Not JSON; use limited text
+                data = await _read_limited_text(resp)
+            return status, None, data
+    except asyncio.TimeoutError:
+        raise
+    except aiohttp.ClientConnectionError as e:
+        raise e
+    except aiohttp.ClientPayloadError as e:
+        # Map as payload error
+        raise _MappedHttpError(status=None, body_snippet=str(e))
+
+
+async def _http_request_core(
+    method: str,
+    url: str,
+    *,
+    session: aiohttp.ClientSession,
+    json_payload: Optional[Dict[str, Any]],
+    timeout_s: float,
+    retry_idempotent: bool,
+    base: float,
+    multiplier: float,
+    jitter: float,
+    max_sleep: float,
+    max_attempts: int,
+) -> Any:
+    last_exc: Optional[BaseException] = None
+    last_status: Optional[int] = None
+    last_body: Optional[str] = None
+
+    attempts = max(1, int(max_attempts))
+    for attempt in range(attempts):
+        try:
+            status, body_snippet, data = await _request_once(
+                method,
+                url,
+                session=session,
+                json_payload=json_payload,
+                timeout_s=timeout_s,
+            )
+            return data
+        except asyncio.TimeoutError as e:
+            last_exc = e
+            if attempt < attempts - 1 and _should_retry(
+                retry_idempotent=retry_idempotent, exc=e
+            ):
+                await asyncio.sleep(
+                    _next_backoff(attempt, base, multiplier, jitter, max_sleep)
+                )
+                continue
+            break
+        except aiohttp.ClientConnectionError as e:
+            last_exc = e
+            if attempt < attempts - 1 and _should_retry(
+                retry_idempotent=retry_idempotent, exc=e
+            ):
+                await asyncio.sleep(
+                    _next_backoff(attempt, base, multiplier, jitter, max_sleep)
+                )
+                continue
+            break
+        except _MappedHttpError as e:
+            last_exc = None
+            last_status = e.status
+            last_body = e.body_snippet
+            if attempt < attempts - 1 and _should_retry(
+                retry_idempotent=retry_idempotent, status=e.status
+            ):
+                await asyncio.sleep(
+                    _next_backoff(attempt, base, multiplier, jitter, max_sleep)
+                )
+                continue
+            break
+
+    raise _finalize_attempts(
+        method,
+        url,
+        last_exc=last_exc,
+        last_status=last_status,
+        last_body_snippet=last_body,
+    )
+
+
+async def _http_request_json(
+    self: "ComfyUILocalClient",
+    method: str,
+    url: str,
+    *,
+    json_payload: Optional[Dict[str, Any]],
+    timeout_s: float,
+    retry_idempotent: bool,
+) -> Any:
+    async with _TempSession(self._session) as session:
+        return await _http_request_core(
+            method,
+            url,
+            session=session,
+            json_payload=json_payload,
+            timeout_s=timeout_s,
+            retry_idempotent=retry_idempotent,
+            base=self._retry_base_seconds,
+            multiplier=self._retry_multiplier,
+            jitter=self._retry_jitter_seconds,
+            max_sleep=self._retry_max_sleep_seconds,
+            max_attempts=self._retry_max_attempts,
+        )
+
+
+def _join_http_base(base: str, route: str) -> str:
+    if not route:
+        return base
+    return f"{base.rstrip('/')}{route}"
+
+
+def _join_ws_base(base: str, route: str) -> str:
+    if not route:
+        return base
+    return f"{base.rstrip('/')}{route}"
+
+
+def _ensure_scheme(base: str, allowed: Tuple[str, ...]) -> None:
+    parsed = urlparse(base)
+    if not parsed.scheme or parsed.scheme.lower() not in allowed:
+        allowed_str = ", ".join(allowed)
+        raise ValueError(
+            f"Base URL must start with one of [{allowed_str}]; got: {base!r}"
+        )
+
+
+def _validate_bases(http_base: str, ws_base: str) -> None:
+    _ensure_scheme(http_base, ("http", "https"))
+    _ensure_scheme(ws_base, ("ws", "wss"))
+
+
+def _quote_client_id(client_id: str) -> str:
+    return quote(client_id, safe="")
+
+
+def _ws_url(base_ws: str, client_id: str) -> str:
+    return f"{base_ws.rstrip('/')}/ws?clientId={_quote_client_id(client_id)}"
+
+
+# Bind helper methods to class namespace (private) without exposing publicly
+ComfyUILocalClient._http_request_json = _http_request_json  # type: ignore[attr-defined]
+ComfyUILocalClient._join_http = lambda self, route: _join_http_base(self._base_url, route)  # type: ignore[attr-defined]
+ComfyUILocalClient._join_ws = lambda self, route: _join_ws_base(self._ws_url, route)  # type: ignore[attr-defined]
