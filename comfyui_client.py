@@ -162,6 +162,9 @@ class ComfyUILocalClient(ComfyUIClientProtocol):
         self._retry_jitter_seconds: float = 0.25
         self._retry_max_sleep_seconds: float = 4.0
         self._retry_max_attempts: int = 3
+        # WebSocket reconnect policy (commit 4)
+        self._ws_max_reconnect_attempts: int = 5
+        self._ws_max_total_backoff_seconds: float = 30.0
 
     # Lifecycle methods may be implemented later; for now they act as no-ops.
     async def __aenter__(self) -> "ComfyUILocalClient":
@@ -283,11 +286,135 @@ class ComfyUILocalClient(ComfyUIClientProtocol):
             raise e.to_public_error(route=route, method=method)
 
     async def ws_connect(self, client_id: str) -> AsyncIterator[WsEvent]:  # type: ignore[override]
-        raise NotImplementedError("ws_connect is not implemented yet")
+        url = _ws_url(self._ws_url, client_id)
+        attempts = 0
+        total_backoff = 0.0
+        base = self._retry_base_seconds
+        multiplier = self._retry_multiplier
+        jitter = self._retry_jitter_seconds
+        max_sleep = self._retry_max_sleep_seconds
+
+        while True:
+            try:
+                # Allow large frames and set ping/pong defaults
+                async with websockets.connect(
+                    url,
+                    max_size=None,
+                    read_limit=64 * 1024 * 1024,
+                    max_queue=4,
+                    ping_interval=20,
+                    ping_timeout=20,
+                ) as websocket:
+                    # On successful connect, reset counters
+                    attempts = 0
+                    total_backoff = 0.0
+                    if self._logger:
+                        try:
+                            self._logger.debug(
+                                f"ComfyUI client: connected websocket {url}"
+                            )
+                        except Exception:
+                            pass
+
+                    while True:
+                        message = await websocket.recv()
+                        if isinstance(message, bytes):
+                            try:
+                                message = message.decode("utf-8", errors="replace")
+                            except Exception:
+                                yield WsEvent(type="binary", data={"length": len(message)})  # type: ignore[call-arg]
+                                continue
+                        try:
+                            payload = json.loads(message)
+                        except Exception:
+                            yield WsEvent(type="text", data={"message": message})  # type: ignore[call-arg]
+                            continue
+
+                        if isinstance(payload, dict):
+                            event_type = str(payload.get("type", "event"))
+                            event_data = payload.get("data")
+                            if not isinstance(event_data, dict):
+                                event_data = {"raw": payload}
+                            yield WsEvent(type=event_type, data=event_data)  # type: ignore[call-arg]
+                        else:
+                            yield WsEvent(type="event", data={"raw": payload})  # type: ignore[call-arg]
+
+            except asyncio.CancelledError:
+                # Allow clean shutdown by propagating cancellation
+                raise
+            except ws_exc.ConnectionClosedOK as e:
+                raise ComfyUIClientWsClosed(
+                    "WebSocket closed normally",
+                    route="/ws",
+                    method="GET",
+                    status=getattr(e, "code", 1000),
+                    code="ws_closed",
+                    body_snippet=str(getattr(e, "reason", ""))[:256],
+                ) from e
+            except ws_exc.ConnectionClosedError as e:
+                # Abnormal close: attempt bounded reconnect
+                attempts += 1
+                if attempts > self._ws_max_reconnect_attempts:
+                    raise ComfyUIClientError(
+                        "WebSocket reconnect attempts exhausted",
+                        route="/ws",
+                        method="GET",
+                        code="ws_closed",
+                        body_snippet=str(getattr(e, "reason", ""))[:256],
+                    ) from e
+                delay = _next_backoff(attempts - 1, base, multiplier, jitter, max_sleep)
+                total_backoff += delay
+                if total_backoff > self._ws_max_total_backoff_seconds:
+                    raise ComfyUIClientError(
+                        "WebSocket reconnect backoff budget exhausted",
+                        route="/ws",
+                        method="GET",
+                        code="ws_closed",
+                        body_snippet=str(getattr(e, "reason", ""))[:256],
+                    ) from e
+                await asyncio.sleep(delay)
+                continue
+            except ws_exc.InvalidStatus as e:
+                raise ComfyUIClientError(
+                    "WebSocket handshake failed",
+                    route="/ws",
+                    method="GET",
+                    code="ws_handshake",
+                ) from e
+            except ws_exc.InvalidURI as e:
+                raise ComfyUIClientError(
+                    "Invalid WebSocket URI",
+                    route="/ws",
+                    method="GET",
+                    code="invalid_ws_uri",
+                ) from e
+            except Exception as e:
+                # Treat as connection error; bounded reconnect
+                attempts += 1
+                if attempts > self._ws_max_reconnect_attempts:
+                    raise ComfyUIClientError(
+                        "WebSocket reconnect attempts exhausted",
+                        route="/ws",
+                        method="GET",
+                        code="connection_error",
+                    ) from e
+                delay = _next_backoff(attempts - 1, base, multiplier, jitter, max_sleep)
+                total_backoff += delay
+                if total_backoff > self._ws_max_total_backoff_seconds:
+                    raise ComfyUIClientError(
+                        "WebSocket reconnect backoff budget exhausted",
+                        route="/ws",
+                        method="GET",
+                        code="connection_error",
+                    ) from e
+                await asyncio.sleep(delay)
+                continue
 
 
 # Runtime dependency; imported here to avoid issues if module is scanned without execution
 import aiohttp  # type: ignore
+import websockets  # type: ignore
+from websockets import exceptions as ws_exc  # type: ignore
 
 
 # ---- Internal helpers (HTTP) ----
