@@ -117,7 +117,15 @@ class WorkerConsumer:
         while True:
             try:
                 ws_url = f"{COMFYUI_WS_URL}?clientId={urllib.parse.quote(self.worker_client_id)}"
-                async with websockets.connect(ws_url) as websocket:
+                # Allow large preview frames from ComfyUI without dropping the connection (1009: message too big)
+                async with websockets.connect(
+                    ws_url,
+                    max_size=None,  # disable message size limit
+                    read_limit=64 * 1024 * 1024,  # buffer up to 64 MiB per frame
+                    max_queue=4,  # small queue to avoid memory spikes
+                    ping_interval=20,
+                    ping_timeout=20,
+                ) as websocket:
                     logger.debug(
                         f"ℹ️\u2009 Nilor-Nodes (worker_consumer): Connected to ComfyUI websocket at {ws_url}"
                     )
