@@ -7,22 +7,12 @@ import logging
 import imageio.v2 as imageio
 import mimetypes
 import boto3
-import os
 import json
-from dotenv import load_dotenv
 from .logger import logger
 from .config.config import load_nilor_nodes_config
 
 # Load shared configuration once
 _CFG = load_nilor_nodes_config()
-
-# --- Load Environment Variables ---
-# Get the directory of the current script
-current_dir = os.path.dirname(os.path.abspath(__file__))
-# Construct the path to the .env file
-dotenv_path = os.path.join(current_dir, ".env")
-# Load the .env file
-load_dotenv(dotenv_path=dotenv_path)
 
 
 # --- Node Categories ---
