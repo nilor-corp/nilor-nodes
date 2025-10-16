@@ -107,174 +107,121 @@ class WorkerConsumer:
     async def listen_for_comfy_events(self):
         while True:
             try:
-                ws_url = f"{self.comfy_ws_url}?clientId={urllib.parse.quote(self.worker_client_id)}"
-                # Allow large preview frames from ComfyUI without dropping the connection (1009: message too big)
-                async with websockets.connect(
-                    ws_url,
-                    max_size=None,  # disable message size limit
-                    read_limit=64 * 1024 * 1024,  # buffer up to 64 MiB per frame
-                    max_queue=4,  # small queue to avoid memory spikes
-                    ping_interval=20,
-                    ping_timeout=20,
-                ) as websocket:
-                    logger.debug(
-                        f"ℹ️\u2009 Nilor-Nodes (worker_consumer): Connected to ComfyUI websocket at {ws_url}"
+                # Consume events from client iterator (handles reconnects internally)
+                async for evt in self.comfy_client.ws_connect(self.worker_client_id):
+                    event_type = evt.get("type")
+                    data = (
+                        evt.get("data", {}) if isinstance(evt.get("data"), dict) else {}
                     )
-                    while True:
-                        message = await websocket.recv()
-                        if isinstance(message, str):
-                            try:
-                                event = json.loads(message)
-                                event_type = event.get("type")
-                                data = event.get("data", {})
-                                prompt_id = data.get("prompt_id")
+                    prompt_id = data.get("prompt_id")
 
-                                if not prompt_id and "sid" in data:
-                                    prompt_id = data["sid"]
+                    if not prompt_id and "sid" in data:
+                        prompt_id = data["sid"]
 
-                                # Allow 'executing' events through even if missing prompt_id
-                                if not prompt_id and event_type != "executing":
-                                    continue
+                    # Allow 'executing' events through even if missing prompt_id
+                    if not prompt_id and event_type != "executing":
+                        continue
 
-                                # Capture our websocket client id from initial status message
-                                if event_type == "status":
-                                    sid = data.get("sid")
-                                    if sid:
-                                        self.websocket_sid = sid
-                                        logger.debug(
-                                            f"ℹ️\u2009 Nilor-Nodes (worker_consumer): Captured websocket SID: {sid}"
-                                        )
-
-                                # Use the first progress event as a signal that the job is running.
-                                if (
-                                    event_type in ["progress", "progress_state"]
-                                    and prompt_id in self.prompt_id_to_content_id_map
-                                    and prompt_id
-                                    not in self.sent_running_status_prompts
-                                ):
-                                    content_id = self.prompt_id_to_content_id_map[
-                                        prompt_id
-                                    ]
-                                    ctx = self.content_context_by_content_id.get(
-                                        content_id, {}
-                                    )
-                                    policy = ctx.get("status_policy") or {}
-                                    running_status = policy.get(
-                                        "running_status", "running"
-                                    )
-                                    logger.info(
-                                        f"ℹ️\u2009 Nilor-Nodes (worker_consumer): Execution started for prompt_id {prompt_id} (content_id: {content_id}) via '{event_type}' event."
-                                    )
-                                    # Mark worker busy as soon as execution starts
-                                    self.is_busy = True
-
-                                    await self._send_status_update(
-                                        content_id,
-                                        running_status,
-                                        ctx.get("venue"),
-                                        ctx.get("canvas"),
-                                        ctx.get("scene"),
-                                        ctx.get("job_type"),
-                                    )
-                                    self.sent_running_status_prompts.add(prompt_id)
-
-                                # Handle execution errors
-                                elif event_type == "execution_error":
-                                    logger.error(
-                                        f"🛑\u2009 Nilor-Nodes (worker_consumer): Received execution error for prompt_id {prompt_id}: {data}"
-                                    )
-                                    if prompt_id in self.prompt_id_to_content_id_map:
-                                        content_id = (
-                                            self.prompt_id_to_content_id_map.pop(
-                                                prompt_id
-                                            )
-                                        )
-                                        ctx = self.content_context_by_content_id.get(
-                                            content_id, {}
-                                        )
-                                        policy = ctx.get("status_policy") or {}
-                                        fail_status = policy.get(
-                                            "fail_status", "failed"
-                                        )
-                                        try:
-                                            await self._send_status_update(
-                                                content_id,
-                                                fail_status,
-                                                ctx.get("venue"),
-                                                ctx.get("canvas"),
-                                                ctx.get("scene"),
-                                                ctx.get("job_type"),
-                                            )
-                                        except Exception:
-                                            pass
-                                        self.content_context_by_content_id.pop(
-                                            content_id, None
-                                        )
-                                    effective_prompt_id = (
-                                        prompt_id or self.current_prompt_id
-                                    )
-                                    if effective_prompt_id:
-                                        self._finalize_prompt(
-                                            effective_prompt_id,
-                                            reason="execution_error",
-                                        )
-
-                                # Node-level executed event (many per prompt) — ignore for busy/reset
-                                elif event_type == "executed":
-                                    logger.debug(
-                                        f"ℹ️\u2009 Nilor-Nodes (worker_consumer): Received node executed event for prompt_id {prompt_id}: {data}"
-                                    )
-
-                                # Prompt-level completion signal: executing with node None
-                                elif event_type == "executing":
-                                    node_id = data.get("node")
-                                    logger.debug(
-                                        f"ℹ️\u2009 Nilor-Nodes (worker_consumer): Received 'executing' event. prompt_id={prompt_id}, node_id={node_id}"
-                                    )
-
-                                    norm_node_id = self._normalize_node_id(node_id)
-                                    if norm_node_id is None:
-                                        effective_prompt_id = (
-                                            prompt_id or self.current_prompt_id
-                                        )
-                                        if effective_prompt_id:
-                                            self._finalize_prompt(
-                                                effective_prompt_id,
-                                                reason="executing node=None",
-                                            )
-
-                                elif event_type == "execution_success":
-                                    effective_prompt_id = (
-                                        prompt_id or self.current_prompt_id
-                                    )
-                                    if effective_prompt_id:
-                                        self._finalize_prompt(
-                                            effective_prompt_id,
-                                            reason="execution_success",
-                                        )
-
-                            except json.JSONDecodeError:
-                                logger.debug(
-                                    "⚠️\u2009 Nilor-Nodes (worker_consumer): Received non-JSON text message from websocket, ignoring."
-                                )
-                        else:
+                    # Capture our websocket client id from initial status message
+                    if event_type == "status":
+                        sid = data.get("sid")
+                        if sid:
+                            self.websocket_sid = sid
                             logger.debug(
-                                "⚠️\u2009 Nilor-Nodes (worker_consumer): Received binary message from websocket, ignoring."
+                                f"ℹ️\u2009 Nilor-Nodes (worker_consumer): Captured websocket SID: {sid}"
                             )
-            except (
-                websockets.exceptions.ConnectionClosedError,
-                ConnectionRefusedError,
-            ) as e:
-                logger.warning(
-                    f"🛑\u2009 Nilor-Nodes (worker_consumer): ComfyUI websocket connection failed: {e}. Retrying in 5 seconds..."
-                )
-                await asyncio.sleep(5)
+
+                    # Use the first progress event as a signal that the job is running.
+                    if (
+                        event_type in ["progress", "progress_state"]
+                        and prompt_id in self.prompt_id_to_content_id_map
+                        and prompt_id not in self.sent_running_status_prompts
+                    ):
+                        content_id = self.prompt_id_to_content_id_map[prompt_id]
+                        ctx = self.content_context_by_content_id.get(content_id, {})
+                        policy = ctx.get("status_policy") or {}
+                        running_status = policy.get("running_status", "running")
+                        logger.info(
+                            f"ℹ️\u2009 Nilor-Nodes (worker_consumer): Execution started for prompt_id {prompt_id} (content_id: {content_id}) via '{event_type}' event."
+                        )
+                        # Mark worker busy as soon as execution starts
+                        self.is_busy = True
+
+                        await self._send_status_update(
+                            content_id,
+                            running_status,
+                            ctx.get("venue"),
+                            ctx.get("canvas"),
+                            ctx.get("scene"),
+                            ctx.get("job_type"),
+                        )
+                        self.sent_running_status_prompts.add(prompt_id)
+
+                    # Handle execution errors
+                    elif event_type == "execution_error":
+                        logger.error(
+                            f"🛑\u2009 Nilor-Nodes (worker_consumer): Received execution error for prompt_id {prompt_id}: {data}"
+                        )
+                        if prompt_id in self.prompt_id_to_content_id_map:
+                            content_id = self.prompt_id_to_content_id_map.pop(prompt_id)
+                            ctx = self.content_context_by_content_id.get(content_id, {})
+                            policy = ctx.get("status_policy") or {}
+                            fail_status = policy.get("fail_status", "failed")
+                            try:
+                                await self._send_status_update(
+                                    content_id,
+                                    fail_status,
+                                    ctx.get("venue"),
+                                    ctx.get("canvas"),
+                                    ctx.get("scene"),
+                                    ctx.get("job_type"),
+                                )
+                            except Exception:
+                                pass
+                            self.content_context_by_content_id.pop(content_id, None)
+                        effective_prompt_id = prompt_id or self.current_prompt_id
+                        if effective_prompt_id:
+                            self._finalize_prompt(
+                                effective_prompt_id,
+                                reason="execution_error",
+                            )
+
+                    # Node-level executed event (many per prompt) — ignore for busy/reset
+                    elif event_type == "executed":
+                        logger.debug(
+                            f"ℹ️\u2009 Nilor-Nodes (worker_consumer): Received node executed event for prompt_id {prompt_id}: {data}"
+                        )
+
+                    # Prompt-level completion signal: executing with node None
+                    elif event_type == "executing":
+                        node_id = data.get("node")
+                        logger.debug(
+                            f"ℹ️\u2009 Nilor-Nodes (worker_consumer): Received 'executing' event. prompt_id={prompt_id}, node_id={node_id}"
+                        )
+
+                        norm_node_id = self._normalize_node_id(node_id)
+                        if norm_node_id is None:
+                            effective_prompt_id = prompt_id or self.current_prompt_id
+                            if effective_prompt_id:
+                                self._finalize_prompt(
+                                    effective_prompt_id,
+                                    reason="executing node=None",
+                                )
+
+                    elif event_type == "execution_success":
+                        effective_prompt_id = prompt_id or self.current_prompt_id
+                        if effective_prompt_id:
+                            self._finalize_prompt(
+                                effective_prompt_id,
+                                reason="execution_success",
+                            )
+
             except Exception as e:
                 logger.error(
-                    f"🛑\u2009 Nilor-Nodes (worker_consumer): An unexpected error occurred in the websocket listener: {e}",
+                    f"🛑\u2009 Nilor-Nodes (worker_consumer): Websocket listener error: {e}",
                     exc_info=True,
                 )
-                await asyncio.sleep(10)
+                await asyncio.sleep(5)
 
     async def consume_loop(self):
         """The main loop to continuously poll for and process messages.
