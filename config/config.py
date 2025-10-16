@@ -39,11 +39,27 @@ class ComfyApiConfig:
         api_url: Base HTTP URL for the ComfyUI REST API (e.g., "http://127.0.0.1:8188").
         ws_url: Base WebSocket URL for ComfyUI events (e.g., "ws://127.0.0.1:8188").
         timeout_s: Request timeout in seconds for ComfyUI HTTP calls.
+        client_enabled: Feature flag to enable the thin client usage.
+        retry_base_seconds: Base backoff seconds for idempotent retries.
+        retry_multiplier: Exponential backoff multiplier.
+        retry_jitter_seconds: Jitter range (±seconds) added to backoff.
+        retry_max_sleep_seconds: Maximum sleep per backoff step.
+        retry_max_attempts: Maximum retry attempts for idempotent routes.
+        ws_max_reconnect_attempts: Maximum websocket reconnect attempts.
+        ws_max_total_backoff_seconds: Cap on total backoff time during WS reconnects.
     """
 
     api_url: str
     ws_url: str
     timeout_s: int
+    client_enabled: bool
+    retry_base_seconds: float
+    retry_multiplier: float
+    retry_jitter_seconds: float
+    retry_max_sleep_seconds: float
+    retry_max_attempts: int
+    ws_max_reconnect_attempts: int
+    ws_max_total_backoff_seconds: float
 
 
 @dataclass(frozen=True)
@@ -102,6 +118,30 @@ class NilorNodesConfig(BaseConfig):
             api_url=str(config_dict.get("NILOR_COMFYUI_API_URL", "")).strip(),
             ws_url=str(config_dict.get("NILOR_COMFYUI_WS_URL", "")).strip(),
             timeout_s=int(config_dict.get("NILOR_COMFY_API_TIMEOUT_SECONDS", 30)),
+            client_enabled=_coerce_bool(
+                config_dict.get("NILOR_COMFY_CLIENT_ENABLED", True)
+            ),
+            retry_base_seconds=float(
+                config_dict.get("NILOR_COMFY_RETRY_BASE_SECONDS", 0.25)
+            ),
+            retry_multiplier=float(
+                config_dict.get("NILOR_COMFY_RETRY_MULTIPLIER", 2.0)
+            ),
+            retry_jitter_seconds=float(
+                config_dict.get("NILOR_COMFY_RETRY_JITTER_SECONDS", 0.25)
+            ),
+            retry_max_sleep_seconds=float(
+                config_dict.get("NILOR_COMFY_RETRY_MAX_SLEEP_SECONDS", 4.0)
+            ),
+            retry_max_attempts=int(
+                config_dict.get("NILOR_COMFY_RETRY_MAX_ATTEMPTS", 3)
+            ),
+            ws_max_reconnect_attempts=int(
+                config_dict.get("NILOR_COMFY_WS_MAX_RECONNECT_ATTEMPTS", 5)
+            ),
+            ws_max_total_backoff_seconds=float(
+                config_dict.get("NILOR_COMFY_WS_MAX_TOTAL_BACKOFF_SECONDS", 30.0)
+            ),
         )
 
         worker_client_id = (
@@ -157,8 +197,50 @@ def _apply_env_overrides(cfg: NilorNodesConfig) -> None:
     comfy_timeout_s = int(
         os.getenv("NILOR_COMFY_API_TIMEOUT_SECONDS", cfg.comfy.timeout_s)
     )
+    comfy_client_enabled = _coerce_bool(
+        os.getenv("NILOR_COMFY_CLIENT_ENABLED", cfg.comfy.client_enabled)
+    )
+    comfy_retry_base = float(
+        os.getenv("NILOR_COMFY_RETRY_BASE_SECONDS", cfg.comfy.retry_base_seconds)
+    )
+    comfy_retry_multiplier = float(
+        os.getenv("NILOR_COMFY_RETRY_MULTIPLIER", cfg.comfy.retry_multiplier)
+    )
+    comfy_retry_jitter = float(
+        os.getenv("NILOR_COMFY_RETRY_JITTER_SECONDS", cfg.comfy.retry_jitter_seconds)
+    )
+    comfy_retry_max_sleep = float(
+        os.getenv(
+            "NILOR_COMFY_RETRY_MAX_SLEEP_SECONDS", cfg.comfy.retry_max_sleep_seconds
+        )
+    )
+    comfy_retry_max_attempts = int(
+        os.getenv("NILOR_COMFY_RETRY_MAX_ATTEMPTS", cfg.comfy.retry_max_attempts)
+    )
+    comfy_ws_max_reconnect = int(
+        os.getenv(
+            "NILOR_COMFY_WS_MAX_RECONNECT_ATTEMPTS",
+            cfg.comfy.ws_max_reconnect_attempts,
+        )
+    )
+    comfy_ws_max_total_backoff = float(
+        os.getenv(
+            "NILOR_COMFY_WS_MAX_TOTAL_BACKOFF_SECONDS",
+            cfg.comfy.ws_max_total_backoff_seconds,
+        )
+    )
     cfg.comfy = ComfyApiConfig(
-        api_url=str(comfy_api_url), ws_url=str(comfy_ws_url), timeout_s=comfy_timeout_s
+        api_url=str(comfy_api_url),
+        ws_url=str(comfy_ws_url),
+        timeout_s=comfy_timeout_s,
+        client_enabled=comfy_client_enabled,
+        retry_base_seconds=comfy_retry_base,
+        retry_multiplier=comfy_retry_multiplier,
+        retry_jitter_seconds=comfy_retry_jitter,
+        retry_max_sleep_seconds=comfy_retry_max_sleep,
+        retry_max_attempts=comfy_retry_max_attempts,
+        ws_max_reconnect_attempts=comfy_ws_max_reconnect,
+        ws_max_total_backoff_seconds=comfy_ws_max_total_backoff,
     )
 
     # Worker (rebuild frozen dataclass)
@@ -208,6 +290,18 @@ def _validate_comfy_config(cfg: ComfyApiConfig) -> None:
     if cfg.timeout_s <= 0:
         raise ValueError(
             f"NILOR_COMFY_API_TIMEOUT_SECONDS must be a positive integer; got {cfg.timeout_s}"
+        )
+    if (
+        cfg.retry_base_seconds < 0
+        or cfg.retry_multiplier <= 0
+        or cfg.retry_max_sleep_seconds <= 0
+    ):
+        raise ValueError("Invalid retry backoff parameters in Comfy client config")
+    if cfg.retry_max_attempts <= 0:
+        raise ValueError("NILOR_COMFY_RETRY_MAX_ATTEMPTS must be a positive integer")
+    if cfg.ws_max_reconnect_attempts < 0 or cfg.ws_max_total_backoff_seconds < 0:
+        raise ValueError(
+            "Invalid websocket reconnect parameters in Comfy client config"
         )
 
 
