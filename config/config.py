@@ -86,6 +86,7 @@ class NilorNodesConfig(BaseConfig):
     comfy: ComfyApiConfig
     worker: WorkerConfig
     allow_env_override: bool
+    sqs_enabled: bool
 
     @classmethod
     def _get_config_path(cls) -> str:
@@ -94,6 +95,7 @@ class NilorNodesConfig(BaseConfig):
     @classmethod
     def from_dict(cls, config_dict: Dict[str, object]) -> "NilorNodesConfig":
         allow_env_override = bool(config_dict.get("allow_env_override", True))
+        sqs_enabled = _coerce_bool(config_dict.get("NILOR_SQS_ENABLED", False))
 
         # Build nested from flat NILOR_* keys present in JSON5
         comfy_cfg = ComfyApiConfig(
@@ -128,7 +130,10 @@ class NilorNodesConfig(BaseConfig):
         )
 
         cfg = cls(
-            comfy=comfy_cfg, worker=worker_cfg, allow_env_override=allow_env_override
+            comfy=comfy_cfg,
+            worker=worker_cfg,
+            allow_env_override=allow_env_override,
+            sqs_enabled=sqs_enabled,
         )
         _validate_comfy_config(cfg.comfy)
         _validate_worker_config(cfg.worker)
@@ -141,6 +146,11 @@ class NilorNodesConfig(BaseConfig):
 def _apply_env_overrides(cfg: NilorNodesConfig) -> None:
     if not cfg.allow_env_override:
         return
+
+    # Feature flags
+    sqs_enabled = os.getenv("NILOR_SQS_ENABLED", cfg.sqs_enabled)
+    cfg.sqs_enabled = _coerce_bool(sqs_enabled)
+
     # Comfy
     cfg.comfy.api_url = os.getenv("NILOR_COMFYUI_API_URL", cfg.comfy.api_url)
     cfg.comfy.ws_url = os.getenv("NILOR_COMFYUI_WS_URL", cfg.comfy.ws_url)
@@ -198,6 +208,19 @@ def _validate_worker_config(cfg: WorkerConfig) -> None:
         raise ValueError(
             f"NILOR_SQS_MAX_MESSAGES must be a positive integer; got {cfg.max_messages}"
         )
+
+
+def _coerce_bool(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    text = str(value).strip().lower()
+    if text in {"1", "true", "yes", "on"}:
+        return True
+    if text in {"0", "false", "no", "off"}:
+        return False
+    return bool(text)
 
 
 def _require_url_scheme(url: str, allowed: set[str], key_name: str) -> None:

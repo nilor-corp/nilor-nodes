@@ -36,18 +36,20 @@ def start_consumer_loop():
     asyncio.run(consume_jobs())
 
 
-# Start the SQS Worker Consumer (controlled by SQS_ENABLED)
-raw_sqs_enabled = os.getenv("SQS_ENABLED", "false")
-env_sqs_enabled = raw_sqs_enabled.strip().lower() == "true"
-if env_sqs_enabled:
+from .config.config import load_nilor_nodes_config
+
+cfg = load_nilor_nodes_config()
+
+# Start the SQS Worker Consumer (controlled by NILOR_SQS_ENABLED)
+if cfg.sqs_enabled:
     consumer_thread = threading.Thread(target=start_consumer_loop, daemon=True)
     consumer_thread.start()
     print(
-        f"✅ Nilor-Nodes: SQS worker consumer thread started (SQS_ENABLED={raw_sqs_enabled} in .env)."
+        "✅ Nilor-Nodes: SQS worker consumer thread started (NILOR_SQS_ENABLED=true)."
     )
 else:
     print(
-        f"⚠️ Nilor-Nodes: SQS worker consumer functionality is disabled (SQS_ENABLED={raw_sqs_enabled} in .env)."
+        "⚠️ Nilor-Nodes: SQS worker consumer functionality is disabled (NILOR_SQS_ENABLED=false)."
     )
 
 

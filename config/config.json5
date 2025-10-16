@@ -5,6 +5,9 @@
   // Required by convention across brain_rnd configs
   allow_env_override: true,
 
+  // Feature flags
+  NILOR_SQS_ENABLED: false,
+
   // --- Comfy API client (consumed by worker_consumer.py for submissions) ---
   // Base HTTP URL for ComfyUI REST API (worker submits to `${api_url}/prompt`)
   NILOR_COMFYUI_API_URL: "http://127.0.0.1:8188",
