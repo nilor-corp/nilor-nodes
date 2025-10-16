@@ -20,6 +20,7 @@ from aiobotocore.session import get_session
 from dotenv import load_dotenv
 from botocore.exceptions import EndpointConnectionError, ClientError
 from .logger import logger
+from .config.config import load_nilor_nodes_config, NilorNodesConfig
 
 # --- Load Environment Variables ---
 # Load from the .env file in the same directory
@@ -36,24 +37,12 @@ else:
     )
 
 # --- Configuration ---
-SQS_ENDPOINT_URL = os.getenv("SQS_ENDPOINT_URL", "http://localhost:9324")
-SQS_JOBS_TO_PROCESS_QUEUE_NAME = os.getenv(
-    "SQS_JOBS_TO_PROCESS_QUEUE_NAME", "jobs_to_process-comfyui"
-)
-SQS_JOB_STATUS_UPDATES_QUEUE_NAME = os.getenv(
-    "SQS_JOB_STATUS_UPDATES_QUEUE_NAME", "job_status_updates"
-)
-SQS_POLL_WAIT_TIME = int(os.getenv("SQS_POLL_WAIT_TIME", "10"))  # SQS Long Polling
-SQS_MAX_MESSAGES = 1
-COMFYUI_API_URL = os.getenv("COMFYUI_API_URL", "http://127.0.0.1:8188") + "/prompt"
-COMFYUI_WS_URL = os.getenv("COMFYUI_WS_URL", "ws://127.0.0.1:8188") + "/ws"
-AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID", "local")
-AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY", "local")
-AWS_DEFAULT_REGION = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
+# Centralized loader provides precedence env > JSON5 and validation
+_CFG: NilorNodesConfig = load_nilor_nodes_config()
 
 
 class WorkerConsumer:
-    def __init__(self):
+    def __init__(self, cfg: NilorNodesConfig):
         self.session = get_session()
         self.prompt_id_to_content_id_map = {}
         self.sent_running_status_prompts = set()
@@ -65,35 +54,35 @@ class WorkerConsumer:
         self.websocket_sid = None
 
         # Stable client_id for routing events to this worker
-        env_id = os.getenv("NILOR_WORKER_CLIENT_ID")
-        if env_id and env_id.strip():
-            self.worker_client_id = env_id.strip()
-        else:
-            host = socket.gethostname()
-            self.worker_client_id = f"nilor-worker-{host}"
+        self.cfg = cfg
+        self.worker_client_id = cfg.worker.worker_client_id
+
+        # Computed endpoints
+        self.comfy_api_url = cfg.comfy.api_url.rstrip("/") + "/prompt"
+        self.comfy_ws_url = cfg.comfy.ws_url.rstrip("/") + "/ws"
         self.current_prompt_id = None
 
     async def _initialize_sqs(self):
         """Initializes SQS queue URLs. Returns True on success, False on failure."""
         async with self.session.create_client(
             "sqs",
-            region_name=AWS_DEFAULT_REGION,
-            endpoint_url=SQS_ENDPOINT_URL,
-            aws_access_key_id=AWS_ACCESS_KEY_ID,
-            aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+            region_name=self.cfg.worker.aws_region,
+            endpoint_url=self.cfg.worker.sqs_endpoint_url,
+            aws_access_key_id=self.cfg.worker.aws_access_key_id,
+            aws_secret_access_key=self.cfg.worker.aws_secret_access_key,
         ) as client:
             try:
                 self.jobs_queue_url = await self._get_queue_url(
-                    client, SQS_JOBS_TO_PROCESS_QUEUE_NAME
+                    client, self.cfg.worker.jobs_queue
                 )
                 self.status_updates_queue_url = await self._get_queue_url(
-                    client, SQS_JOB_STATUS_UPDATES_QUEUE_NAME
+                    client, self.cfg.worker.status_queue
                 )
                 return True
             except EndpointConnectionError as e:
                 # Quiet the noisy traceback by logging a concise warning instead
                 logger.warning(
-                    f"⚠️\u2009 Nilor-Nodes (worker_consumer): SQS endpoint is unreachable at {SQS_ENDPOINT_URL}: {e}. "
+                    f"⚠️\u2009 Nilor-Nodes (worker_consumer): SQS endpoint is unreachable at {self.cfg.worker.sqs_endpoint_url}: {e}. "
                 )
                 return False
             except Exception as e:
@@ -116,7 +105,7 @@ class WorkerConsumer:
     async def listen_for_comfy_events(self):
         while True:
             try:
-                ws_url = f"{COMFYUI_WS_URL}?clientId={urllib.parse.quote(self.worker_client_id)}"
+                ws_url = f"{self.comfy_ws_url}?clientId={urllib.parse.quote(self.worker_client_id)}"
                 # Allow large preview frames from ComfyUI without dropping the connection (1009: message too big)
                 async with websockets.connect(
                     ws_url,
@@ -323,15 +312,15 @@ class WorkerConsumer:
                 try:
                     async with self.session.create_client(
                         "sqs",
-                        region_name=AWS_DEFAULT_REGION,
-                        endpoint_url=SQS_ENDPOINT_URL,
-                        aws_access_key_id=AWS_ACCESS_KEY_ID,
-                        aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+                        region_name=self.cfg.worker.aws_region,
+                        endpoint_url=self.cfg.worker.sqs_endpoint_url,
+                        aws_access_key_id=self.cfg.worker.aws_access_key_id,
+                        aws_secret_access_key=self.cfg.worker.aws_secret_access_key,
                     ) as client:
                         response = await client.receive_message(
                             QueueUrl=self.jobs_queue_url,
-                            MaxNumberOfMessages=SQS_MAX_MESSAGES,
-                            WaitTimeSeconds=SQS_POLL_WAIT_TIME,
+                            MaxNumberOfMessages=self.cfg.worker.max_messages,
+                            WaitTimeSeconds=self.cfg.worker.poll_wait_s,
                         )
 
                     messages = response.get("Messages", [])
@@ -348,10 +337,10 @@ class WorkerConsumer:
                             # On successful processing, delete the message
                             async with self.session.create_client(
                                 "sqs",
-                                region_name=AWS_DEFAULT_REGION,
-                                endpoint_url=SQS_ENDPOINT_URL,
-                                aws_access_key_id=AWS_ACCESS_KEY_ID,
-                                aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+                                region_name=self.cfg.worker.aws_region,
+                                endpoint_url=self.cfg.worker.sqs_endpoint_url,
+                                aws_access_key_id=self.cfg.worker.aws_access_key_id,
+                                aws_secret_access_key=self.cfg.worker.aws_secret_access_key,
                             ) as client:
                                 await client.delete_message(
                                     QueueUrl=self.jobs_queue_url,
@@ -396,7 +385,7 @@ class WorkerConsumer:
                 except EndpointConnectionError as e:
                     # Lost connection to SQS; reset and re-initialize on next loop
                     logger.warning(
-                        f"⚠️\u2009 Nilor-Nodes (worker_consumer): Lost connection to SQS at {SQS_ENDPOINT_URL}: {e}. Will retry initialization in 10 seconds."
+                        f"⚠️\u2009 Nilor-Nodes (worker_consumer): Lost connection to SQS at {self.cfg.worker.sqs_endpoint_url}: {e}. Will retry initialization in 10 seconds."
                     )
                     self.jobs_queue_url = None
                     self.status_updates_queue_url = None
@@ -409,6 +398,12 @@ class WorkerConsumer:
         finally:
             listener_task.cancel()
             await asyncio.gather(listener_task, return_exceptions=True)
+            # Close shared HTTP session if created
+            if self.http_session is not None:
+                try:
+                    await self.http_session.close()
+                except Exception:
+                    pass
             logger.info(
                 "⚠️\u2009 Nilor-Nodes (worker_consumer): Websocket listener stopped."
             )
@@ -487,20 +482,22 @@ class WorkerConsumer:
                     extra["client_id"] = self.worker_client_id
                     payload["extra_data"] = extra
 
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    COMFYUI_API_URL, json=payload, timeout=30
-                ) as response:
-                    response.raise_for_status()
-                    response_json = await response.json()
-                    prompt_id = response_json.get("prompt_id")
-                    logger.debug(
-                        f"✅ Nilor-Nodes (worker_consumer): Successfully submitted job to ComfyUI. Prompt ID: {prompt_id}"
-                    )
-                    self.prompt_id_to_content_id_map[prompt_id] = content_id
-                    # Mark worker busy after successful submission to avoid over-queuing on this machine
-                    self.is_busy = True
-                    self.current_prompt_id = prompt_id
+            if self.http_session is None:
+                # Lazily create if not created by the loop yet
+                self.http_session = aiohttp.ClientSession()
+            async with self.http_session.post(
+                self.comfy_api_url, json=payload, timeout=self.cfg.comfy.timeout_s
+            ) as response:
+                response.raise_for_status()
+                response_json = await response.json()
+                prompt_id = response_json.get("prompt_id")
+                logger.debug(
+                    f"✅ Nilor-Nodes (worker_consumer): Successfully submitted job to ComfyUI. Prompt ID: {prompt_id}"
+                )
+                self.prompt_id_to_content_id_map[prompt_id] = content_id
+                # Mark worker busy after successful submission to avoid over-queuing on this machine
+                self.is_busy = True
+                self.current_prompt_id = prompt_id
 
             # No need to delete here, the consume_loop handles message deletion
         except aiohttp.ClientError as e:
@@ -533,10 +530,10 @@ class WorkerConsumer:
             message_body = json.dumps(body)
             async with self.session.create_client(
                 "sqs",
-                region_name=AWS_DEFAULT_REGION,
-                endpoint_url=SQS_ENDPOINT_URL,
-                aws_access_key_id=AWS_ACCESS_KEY_ID,
-                aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+                region_name=self.cfg.worker.aws_region,
+                endpoint_url=self.cfg.worker.sqs_endpoint_url,
+                aws_access_key_id=self.cfg.worker.aws_access_key_id,
+                aws_secret_access_key=self.cfg.worker.aws_secret_access_key,
             ) as client:
                 await client.send_message(
                     QueueUrl=self.status_updates_queue_url, MessageBody=message_body
@@ -580,5 +577,8 @@ class WorkerConsumer:
 
 async def consume_jobs():
     """Entry point function to be called in a background thread."""
-    consumer = WorkerConsumer()
+    # Create shared HTTP session once and reuse throughout lifecycle
+    consumer = WorkerConsumer(cfg=_CFG)
+    # Initialize shared HTTP session at startup
+    consumer.http_session = aiohttp.ClientSession()
     await consumer.consume_loop()

@@ -21,6 +21,16 @@ except Exception as _e:  # pragma: no cover
     json5 = None  # lazy failure in loader
 
 
+class BaseConfig:  # type: ignore
+    @classmethod
+    def get_instance(cls):
+        # Minimal fallback: load JSON5 directly when BaseConfig is unavailable
+        path = os.path.join(os.path.dirname(__file__), "config.json5")
+        with open(path, "r", encoding="utf-8") as f:
+            data = json5.load(f) if json5 is not None else {}
+        return cls.from_dict(data)  # type: ignore[attr-defined]
+
+
 @dataclass(frozen=True)
 class ComfyApiConfig:
     """Configuration for the ComfyUI client.
@@ -63,164 +73,111 @@ class WorkerConfig:
     worker_client_id: str
 
 
-@dataclass(frozen=True)
-class NilorNodesConfig:
+@dataclass
+class NilorNodesConfig(BaseConfig):
     """Aggregate configuration for the Nilor-Nodes sidecar.
 
     Args:
         comfy: Configuration for the ComfyUI HTTP/WS client.
         worker: Configuration for SQS and worker identity.
+        allow_env_override: When true, environment variables may override file values.
     """
 
     comfy: ComfyApiConfig
     worker: WorkerConfig
+    allow_env_override: bool
 
+    @classmethod
+    def _get_config_path(cls) -> str:
+        return os.path.join(os.path.dirname(__file__), "config.json5")
 
-class Config:
-    """Public configuration loader API for the Nilor-Nodes sidecar.
+    @classmethod
+    def from_dict(cls, config_dict: Dict[str, object]) -> "NilorNodesConfig":
+        allow_env_override = bool(config_dict.get("allow_env_override", True))
 
-    The implementation is intentionally deferred to a subsequent commit. This
-    placeholder establishes the method signature and return type to facilitate
-    incremental refactors in consumers.
-    """
+        # Build nested from flat NILOR_* keys present in JSON5
+        comfy_cfg = ComfyApiConfig(
+            api_url=str(config_dict.get("NILOR_COMFYUI_API_URL", "")).strip(),
+            ws_url=str(config_dict.get("NILOR_COMFYUI_WS_URL", "")).strip(),
+            timeout_s=int(config_dict.get("NILOR_COMFY_API_TIMEOUT_SECONDS", 30)),
+        )
 
-    @staticmethod
-    def load(
-        env: os._Environ[str] = os.environ, json5_path: Optional[str] = None
-    ) -> NilorNodesConfig:
-        """Load and return a typed configuration instance.
+        worker_client_id = (
+            str(config_dict.get("NILOR_WORKER_CLIENT_ID", "")).strip()
+            or _generate_worker_client_id()
+        )
 
-        Args:
-            env: Mapping of environment variables used for overrides.
-            json5_path: Optional path to a JSON5 file containing non-secret defaults.
+        worker_cfg = WorkerConfig(
+            sqs_endpoint_url=str(config_dict.get("NILOR_SQS_ENDPOINT_URL", "")).strip(),
+            jobs_queue=str(
+                config_dict.get("NILOR_SQS_JOBS_TO_PROCESS_QUEUE_NAME", "")
+            ).strip(),
+            status_queue=str(
+                config_dict.get("NILOR_SQS_JOB_STATUS_UPDATES_QUEUE_NAME", "")
+            ).strip(),
+            poll_wait_s=int(config_dict.get("NILOR_SQS_POLL_WAIT_TIME", 10)),
+            max_messages=int(config_dict.get("NILOR_SQS_MAX_MESSAGES", 1)),
+            aws_access_key_id=str(
+                config_dict.get("NILOR_AWS_ACCESS_KEY_ID", "")
+            ).strip(),
+            aws_secret_access_key=str(
+                config_dict.get("NILOR_AWS_SECRET_ACCESS_KEY", "")
+            ).strip(),
+            aws_region=str(config_dict.get("NILOR_AWS_DEFAULT_REGION", "")).strip(),
+            worker_client_id=worker_client_id,
+        )
 
-        Returns:
-            NilorNodesConfig: The fully parsed and validated configuration object.
-        """
-
-        # Read JSON5 file into overrides if provided
-        file_overrides: Dict[str, object] = {}
-        if json5_path:
-            if json5 is None:
-                raise RuntimeError(
-                    "json5 module is required to load configuration from JSON5 file"
-                )
-            if os.path.exists(json5_path):
-                try:
-                    with open(json5_path, "r", encoding="utf-8") as f:
-                        loaded = json5.load(f)
-                    if not isinstance(loaded, dict):
-                        raise ValueError(
-                            "JSON5 configuration must be a top-level object"
-                        )
-                    file_overrides = {str(k): v for k, v in loaded.items()}
-                except Exception as exc:
-                    raise RuntimeError(
-                        f"Failed to read JSON5 configuration from '{json5_path}': {type(exc).__name__}: {exc}"
-                    )
-
-        # Normalize env into NILOR_* keys with legacy compatibility
-        env_values = _normalize_env_to_nilor(env)
-
-        # Precedence: env > file
-        effective: Dict[str, object] = dict(file_overrides)
-        effective.update(env_values)
-
-        # Parse
-        comfy = _parse_comfy_config(effective)
-        worker = _parse_worker_config(effective)
-
-        # Validate
-        _validate_comfy_config(comfy)
-        _validate_worker_config(worker)
-
-        return NilorNodesConfig(comfy=comfy, worker=worker)
+        cfg = cls(
+            comfy=comfy_cfg, worker=worker_cfg, allow_env_override=allow_env_override
+        )
+        _validate_comfy_config(cfg.comfy)
+        _validate_worker_config(cfg.worker)
+        return cfg
 
 
 # ---- Internal helpers ----
 
 
-def _normalize_env_to_nilor(env: os._Environ[str]) -> Dict[str, object]:
-    normalized: Dict[str, object] = {}
-    for key, value in env.items():
-        if key.startswith("NILOR_"):
-            normalized[key] = value
-    return normalized
-
-
-def _parse_comfy_config(values: Dict[str, object]) -> ComfyApiConfig:
-    api_url = str(values.get("NILOR_COMFYUI_API_URL", "")).strip()
-    ws_url = str(values.get("NILOR_COMFYUI_WS_URL", "")).strip()
-    timeout_raw = values.get("NILOR_COMFY_API_TIMEOUT_SECONDS", 30)
-    try:
-        timeout_s = int(timeout_raw)
-    except Exception:
-        raise ValueError(
-            f"Invalid integer for NILOR_COMFY_API_TIMEOUT_SECONDS: {timeout_raw!r}"
-        )
-    if not api_url:
-        raise ValueError("Missing NILOR_COMFYUI_API_URL (env or JSON5)")
-    if not ws_url:
-        raise ValueError("Missing NILOR_COMFYUI_WS_URL (env or JSON5)")
-    return ComfyApiConfig(api_url=api_url, ws_url=ws_url, timeout_s=timeout_s)
-
-
-def _parse_worker_config(values: Dict[str, object]) -> WorkerConfig:
-    sqs_endpoint_url = str(values.get("NILOR_SQS_ENDPOINT_URL", "")).strip()
-    jobs_queue = str(values.get("NILOR_SQS_JOBS_TO_PROCESS_QUEUE_NAME", "")).strip()
-    status_queue = str(
-        values.get("NILOR_SQS_JOB_STATUS_UPDATES_QUEUE_NAME", "")
-    ).strip()
-
-    poll_wait_raw = values.get("NILOR_SQS_POLL_WAIT_TIME", 10)
-    max_messages_raw = values.get("NILOR_SQS_MAX_MESSAGES", 1)
-    try:
-        poll_wait_s = int(poll_wait_raw)
-    except Exception:
-        raise ValueError(
-            f"Invalid integer for NILOR_SQS_POLL_WAIT_TIME: {poll_wait_raw!r}"
-        )
-    try:
-        max_messages = int(max_messages_raw)
-    except Exception:
-        raise ValueError(
-            f"Invalid integer for NILOR_SQS_MAX_MESSAGES: {max_messages_raw!r}"
-        )
-
-    aws_access_key_id = str(values.get("NILOR_AWS_ACCESS_KEY_ID", "")).strip()
-    aws_secret_access_key = str(values.get("NILOR_AWS_SECRET_ACCESS_KEY", "")).strip()
-    aws_region = str(values.get("NILOR_AWS_DEFAULT_REGION", "")).strip()
-
-    worker_client_id = str(values.get("NILOR_WORKER_CLIENT_ID", "")).strip()
-    if not worker_client_id:
-        worker_client_id = _generate_worker_client_id()
-
-    if not sqs_endpoint_url:
-        raise ValueError("Missing NILOR_SQS_ENDPOINT_URL (env or JSON5)")
-    if not jobs_queue:
-        raise ValueError("Missing NILOR_SQS_JOBS_TO_PROCESS_QUEUE_NAME (env or JSON5)")
-    if not status_queue:
-        raise ValueError(
-            "Missing NILOR_SQS_JOB_STATUS_UPDATES_QUEUE_NAME (env or JSON5)"
-        )
-    if not aws_access_key_id:
-        raise ValueError("Missing NILOR_AWS_ACCESS_KEY_ID (set via env)")
-    if not aws_secret_access_key:
-        raise ValueError("Missing NILOR_AWS_SECRET_ACCESS_KEY (set via env)")
-    if not aws_region:
-        raise ValueError("Missing NILOR_AWS_DEFAULT_REGION (env or JSON5)")
-
-    return WorkerConfig(
-        sqs_endpoint_url=sqs_endpoint_url,
-        jobs_queue=jobs_queue,
-        status_queue=status_queue,
-        poll_wait_s=poll_wait_s,
-        max_messages=max_messages,
-        aws_access_key_id=aws_access_key_id,
-        aws_secret_access_key=aws_secret_access_key,
-        aws_region=aws_region,
-        worker_client_id=worker_client_id,
+def _apply_env_overrides(cfg: NilorNodesConfig) -> None:
+    if not cfg.allow_env_override:
+        return
+    # Comfy
+    cfg.comfy.api_url = os.getenv("NILOR_COMFYUI_API_URL", cfg.comfy.api_url)
+    cfg.comfy.ws_url = os.getenv("NILOR_COMFYUI_WS_URL", cfg.comfy.ws_url)
+    cfg.comfy.timeout_s = int(
+        os.getenv("NILOR_COMFY_API_TIMEOUT_SECONDS", cfg.comfy.timeout_s)
     )
+
+    # Worker
+    cfg.worker.sqs_endpoint_url = os.getenv(
+        "NILOR_SQS_ENDPOINT_URL", cfg.worker.sqs_endpoint_url
+    )
+    cfg.worker.jobs_queue = os.getenv(
+        "NILOR_SQS_JOBS_TO_PROCESS_QUEUE_NAME", cfg.worker.jobs_queue
+    )
+    cfg.worker.status_queue = os.getenv(
+        "NILOR_SQS_JOB_STATUS_UPDATES_QUEUE_NAME", cfg.worker.status_queue
+    )
+    cfg.worker.poll_wait_s = int(
+        os.getenv("NILOR_SQS_POLL_WAIT_TIME", cfg.worker.poll_wait_s)
+    )
+    cfg.worker.max_messages = int(
+        os.getenv("NILOR_SQS_MAX_MESSAGES", cfg.worker.max_messages)
+    )
+    cfg.worker.aws_access_key_id = os.getenv(
+        "NILOR_AWS_ACCESS_KEY_ID", cfg.worker.aws_access_key_id
+    )
+    cfg.worker.aws_secret_access_key = os.getenv(
+        "NILOR_AWS_SECRET_ACCESS_KEY", cfg.worker.aws_secret_access_key
+    )
+    cfg.worker.aws_region = os.getenv("NILOR_AWS_DEFAULT_REGION", cfg.worker.aws_region)
+    cfg.worker.worker_client_id = os.getenv(
+        "NILOR_WORKER_CLIENT_ID", cfg.worker.worker_client_id
+    )
+
+    # Re-validate after overrides
+    _validate_comfy_config(cfg.comfy)
+    _validate_worker_config(cfg.worker)
 
 
 def _validate_comfy_config(cfg: ComfyApiConfig) -> None:
@@ -277,3 +234,26 @@ def _to_base36(n: int) -> str:
         n, r = divmod(n, 36)
         res.append(digits[r])
     return sign + "".join(reversed(res))
+
+
+def load_nilor_nodes_config() -> NilorNodesConfig:
+    """Convenience loader aligning with brain_rnd config pattern.
+
+    - Loads environment variables via python-dotenv if available
+    - Reads JSON5 defaults and applies env overrides when enabled
+    - Returns a typed `NilorNodesConfig`
+    """
+    try:
+        from dotenv import load_dotenv  # optional dependency present in sidecar
+
+        load_dotenv()
+    except Exception:
+        pass
+    # Use BaseConfig-backed singleton load
+    if json5 is None:
+        raise RuntimeError(
+            "json5 module is required to load configuration from JSON5 file"
+        )
+    cfg = NilorNodesConfig.get_instance()  # type: ignore[attr-defined]
+    _apply_env_overrides(cfg)
+    return cfg
