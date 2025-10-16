@@ -19,7 +19,7 @@
   NILOR_COMFY_API_TIMEOUT_SECONDS: 30,
 
   // Optional HTTP gating (WS always uses client iterator; no legacy WS fallback)
-  NILOR_COMFY_CLIENT_ENABLED: true,
+  NILOR_COMFY_CLIENT_ENABLED: false,
 
   // HTTP idempotent retry policy (applies only to GET /system_stats and POST /free)
   NILOR_COMFY_RETRY_BASE_SECONDS: 0.25,
