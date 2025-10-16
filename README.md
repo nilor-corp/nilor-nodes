@@ -209,6 +209,35 @@ The `worker_consumer.py` script is a background service that runs on each ComfyU
 
 </details>
 
+## ⚙️ Configuration and Runtime Model
+
+The sidecar uses a small, typed configuration loader with JSON5 defaults and optional environment overrides.
+
+- **Precedence**: environment variables > `config/config.json5` (controlled by `allow_env_override: true`).
+- **No hot‑reload**: configuration is loaded once at process start and passed to components.
+- **Paths/keys**: JSON5 at `ComfyUI/custom_nodes/nilor-nodes/config/config.json5` with `NILOR_*` keys (e.g., `NILOR_COMFYUI_API_URL`, `NILOR_SQS_ENDPOINT_URL`). Secrets (AWS secret) must be set via `.env`.
+- **Typed object**: loader returns a `NilorNodesConfig` with `comfy` and `worker` sections.
+
+Pseudocode usage:
+
+```pseudo
+cfg = load_nilor_nodes_config()
+# Comfy endpoints
+http_url = cfg.comfy.api_url + "/prompt"
+ws_url = cfg.comfy.ws_url + "/ws"
+# SQS client params
+endpoint = cfg.worker.sqs_endpoint_url
+region = cfg.worker.aws_region
+access_key = cfg.worker.aws_access_key_id
+secret_key = cfg.worker.aws_secret_access_key
+client_id = cfg.worker.worker_client_id
+```
+
+Current integrations:
+
+- `worker_consumer.py`: loads config at startup, reuses a single HTTP session, and uses `cfg.comfy`/`cfg.worker` exclusively.
+- `media_stream.py`: uses `cfg.worker` for SQS completion notifications.
+
 <details>
 <summary><b>Environment Variables</b></summary>
 
