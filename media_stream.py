@@ -11,6 +11,10 @@ import os
 import json
 from dotenv import load_dotenv
 from .logger import logger
+from .config.config import load_nilor_nodes_config
+
+# Load shared configuration once
+_CFG = load_nilor_nodes_config()
 
 # --- Load Environment Variables ---
 # Get the directory of the current script
@@ -313,10 +317,10 @@ class MediaStreamOutput:
             # Re-initialize the client inside the execution to ensure it picks up env vars correctly.
             sqs_client = boto3.client(
                 "sqs",
-                endpoint_url=os.getenv("SQS_ENDPOINT_URL"),
-                aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID", "local"),
-                aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY", "local"),
-                region_name=os.getenv("AWS_DEFAULT_REGION", "us-east-1"),
+                endpoint_url=_CFG.worker.sqs_endpoint_url,
+                aws_access_key_id=_CFG.worker.aws_access_key_id,
+                aws_secret_access_key=_CFG.worker.aws_secret_access_key,
+                region_name=_CFG.worker.aws_region,
             )
             logger.debug(
                 f"ℹ️\u2009 Nilor-Nodes (MediaStreamOutput): Sending completion message for content {content_id} to queue: {job_completions_queue_url}"
