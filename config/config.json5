@@ -6,6 +6,8 @@
   allow_env_override: true,
 
   // ---- Feature flags ----
+  // Log level for nilor-nodes components (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+  NILOR_LOG_LEVEL: "INFO",
   NILOR_SQS_ENABLED: false,
 
   // ---- Comfy API client (consumed by worker_consumer.py) ----
