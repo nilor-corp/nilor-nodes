@@ -20,6 +20,7 @@ from aiobotocore.session import get_session
 from dotenv import load_dotenv
 from botocore.exceptions import EndpointConnectionError, ClientError
 from .logger import logger
+from .comfyui_client import ComfyUILocalClient, ComfyUIClientError
 from .config.config import load_nilor_nodes_config, NilorNodesConfig
 
 # --- Load Environment Variables ---
@@ -50,6 +51,7 @@ class WorkerConsumer:
         self.jobs_queue_url = None
         self.status_updates_queue_url = None
         self.http_session = None
+        self.comfy_client = None
         self.is_busy = False
         self.websocket_sid = None
 
@@ -57,7 +59,7 @@ class WorkerConsumer:
         self.cfg = cfg
         self.worker_client_id = cfg.worker.worker_client_id
 
-        # Computed endpoints
+        # Computed endpoints (keep existing for websocket; HTTP now via client)
         self.comfy_api_url = cfg.comfy.api_url.rstrip("/") + "/prompt"
         self.comfy_ws_url = cfg.comfy.ws_url.rstrip("/") + "/ws"
         self.current_prompt_id = None
@@ -482,25 +484,27 @@ class WorkerConsumer:
                     extra["client_id"] = self.worker_client_id
                     payload["extra_data"] = extra
 
-            if self.http_session is None:
-                # Lazily create if not created by the loop yet
-                self.http_session = aiohttp.ClientSession()
-            async with self.http_session.post(
-                self.comfy_api_url, json=payload, timeout=self.cfg.comfy.timeout_s
-            ) as response:
-                response.raise_for_status()
-                response_json = await response.json()
-                prompt_id = response_json.get("prompt_id")
-                logger.debug(
-                    f"✅ Nilor-Nodes (worker_consumer): Successfully submitted job to ComfyUI. Prompt ID: {prompt_id}"
+            if self.comfy_client is None:
+                # Construct client using shared session when available; fallback to creating a temp one
+                self.comfy_client = ComfyUILocalClient(
+                    base_url=self.cfg.comfy.api_url,
+                    ws_url=self.cfg.comfy.ws_url,
+                    session=self.http_session,
+                    logger=logger,
+                    timeout=float(self.cfg.comfy.timeout_s),
                 )
-                self.prompt_id_to_content_id_map[prompt_id] = content_id
-                # Mark worker busy after successful submission to avoid over-queuing on this machine
-                self.is_busy = True
-                self.current_prompt_id = prompt_id
+
+            prompt_id = await self.comfy_client.submit_prompt(payload)
+            logger.debug(
+                f"✅ Nilor-Nodes (worker_consumer): Successfully submitted job to ComfyUI. Prompt ID: {prompt_id}"
+            )
+            self.prompt_id_to_content_id_map[prompt_id] = content_id
+            # Mark worker busy after successful submission to avoid over-queuing on this machine
+            self.is_busy = True
+            self.current_prompt_id = prompt_id
 
             # No need to delete here, the consume_loop handles message deletion
-        except aiohttp.ClientError as e:
+        except (aiohttp.ClientError, ComfyUIClientError) as e:
             logger.error(
                 f"🛑\u2009 Nilor-Nodes (worker_consumer): Failed to submit job to ComfyUI: {e}. Message will be retried."
             )
@@ -581,4 +585,12 @@ async def consume_jobs():
     consumer = WorkerConsumer(cfg=_CFG)
     # Initialize shared HTTP session at startup
     consumer.http_session = aiohttp.ClientSession()
+    # Construct ComfyUI client using shared session
+    consumer.comfy_client = ComfyUILocalClient(
+        base_url=_CFG.comfy.api_url,
+        ws_url=_CFG.comfy.ws_url,
+        session=consumer.http_session,
+        logger=logger,
+        timeout=float(_CFG.comfy.timeout_s),
+    )
     await consumer.consume_loop()
