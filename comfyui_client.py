@@ -127,6 +127,13 @@ class ComfyUIClientProtocol(Protocol):
     async def ws_connect(self, client_id: str) -> AsyncIterator[WsEvent]:
         """Connect to the websocket (`/ws?clientId=...`) and yield parsed events."""
 
+    async def probe(self) -> None:
+        """Lightweight health probe for connectivity/parseability.
+
+        Executes a GET `/system_stats` with a short timeout and no retries. Raises
+        `ComfyUIClientError` subclasses on failure; returns `None` on success.
+        """
+
 
 class ComfyUILocalClient(ComfyUIClientProtocol):
     """Local HTTP/WebSocket client for a running ComfyUI instance.
@@ -156,6 +163,7 @@ class ComfyUILocalClient(ComfyUIClientProtocol):
         self._session = session  # type: ignore[assignment]
         self._logger = logger
         self._timeout: float = float(timeout)
+        self._owned_session: Optional[aiohttp.ClientSession] = None
         # Backoff defaults per plan (commit 3)
         self._retry_base_seconds: float = 0.25
         self._retry_multiplier: float = 2.0
@@ -168,11 +176,18 @@ class ComfyUILocalClient(ComfyUIClientProtocol):
 
     # Lifecycle methods may be implemented later; for now they act as no-ops.
     async def __aenter__(self) -> "ComfyUILocalClient":
-        """Enter async context; no-op until internal session management is added."""
+        """Enter async context; create an internal session when none provided."""
+        if self._session is None and self._owned_session is None:
+            self._owned_session = aiohttp.ClientSession()
         return self
 
     async def __aexit__(self, exc_type, exc, tb) -> None:  # type: ignore[override]
-        """Exit async context; no-op until internal session management is added."""
+        """Exit async context; close internal session if owned by this client."""
+        if self._owned_session is not None:
+            try:
+                await self._owned_session.close()
+            finally:
+                self._owned_session = None
         return None
 
     # Protocol methods — to be implemented in subsequent commits.
@@ -409,6 +424,32 @@ class ComfyUILocalClient(ComfyUIClientProtocol):
                     ) from e
                 await asyncio.sleep(delay)
                 continue
+
+    async def probe(self) -> None:  # type: ignore[override]
+        route = "/system_stats"
+        method = "GET"
+        url = self._join_http(route)
+        short_timeout = min(self._timeout, 3.0)
+        try:
+            # No retries: retry_idempotent=False
+            await self._http_request_json(
+                method,
+                url,
+                json_payload=None,
+                timeout_s=short_timeout,
+                retry_idempotent=False,
+            )
+        except asyncio.TimeoutError as e:
+            raise ComfyUIClientTimeout(
+                f"Timeout while calling {method} {route}",
+                route=route,
+                method=method,
+                code="timeout",
+            ) from e
+        except _MappedHttpError as e:
+            raise e.to_public_error(route=route, method=method)
+        except _MappedConnError as e:
+            raise e.to_public_error(route=route, method=method)
 
 
 # Runtime dependency; imported here to avoid issues if module is scanned without execution
@@ -698,7 +739,7 @@ async def _http_request_json(
     timeout_s: float,
     retry_idempotent: bool,
 ) -> Any:
-    async with _TempSession(self._session) as session:
+    async with _TempSession(self._session or self._owned_session) as session:
         return await _http_request_core(
             method,
             url,
