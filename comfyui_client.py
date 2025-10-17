@@ -48,12 +48,14 @@ class SystemStats:
     present, RAM-related metrics may also appear (e.g., `ram_total`, `ram_free`).
 
     Attributes:
+        vram_total: Total VRAM (bytes) when reported.
         vram_free: Free VRAM reported by the backend, if available.
         torch_vram_free: Free VRAM according to torch, if available.
         ram_total: Total system RAM (bytes) when reported.
         ram_free: Free system RAM (bytes) when reported.
     """
 
+    vram_total: Optional[float] = None
     vram_free: Optional[float] = None
     torch_vram_free: Optional[float] = None
     ram_total: Optional[float] = None
@@ -262,6 +264,11 @@ class ComfyUILocalClient(ComfyUIClientProtocol):
             raise e.to_public_error(route=route, method=method)
 
         # Parse known fields, tolerate missing/unknown
+        vram_total = (
+            _coerce_optional_float(data.get("vram_total"))
+            if isinstance(data, dict)
+            else None
+        )
         vram_free = (
             _coerce_optional_float(data.get("vram_free"))
             if isinstance(data, dict)
@@ -279,6 +286,7 @@ class ComfyUILocalClient(ComfyUIClientProtocol):
             (data.get("ram_free")) if isinstance(data, dict) else None
         )
         return SystemStats(
+            vram_total=vram_total,
             vram_free=vram_free,
             torch_vram_free=torch_vram_free,
             ram_total=ram_total,

@@ -44,6 +44,27 @@ class RemediationResult:
     success: bool
 
 
+@dataclass(frozen=True)
+class DerivedStats:
+    """Computed metrics used by the policy engine.
+
+    Attributes:
+        vram_total: Total VRAM (bytes) if known.
+        vram_free: Free VRAM (bytes) if known.
+        vram_used_pct: Percent VRAM used in [0, 100] when computable.
+        ram_total: Total RAM (bytes) if known.
+        ram_free: Free RAM (bytes) if known.
+        ram_used_pct: Percent RAM used in [0, 100] when computable.
+    """
+
+    vram_total: Optional[float]
+    vram_free: Optional[float]
+    vram_used_pct: Optional[float]
+    ram_total: Optional[float]
+    ram_free: Optional[float]
+    ram_used_pct: Optional[float]
+
+
 class MemoryHygiene:
     """Memory Guardian component orchestrating checks and remediation between jobs."""
 
@@ -68,7 +89,7 @@ class MemoryHygiene:
         start_ts = time.monotonic()
 
         if not self._cfg.enabled:
-            before = await self._get_stats_safe()
+            before, _ = await self._collect_metrics()
             return RemediationResult(
                 before=before,
                 after=None,
@@ -84,7 +105,7 @@ class MemoryHygiene:
         except Exception:
             supported = False
 
-        before = await self._get_stats_safe()
+        before, _ = await self._collect_metrics()
 
         if not supported:
             return RemediationResult(
@@ -115,9 +136,38 @@ class MemoryHygiene:
             # Return an empty struct; callers tolerate partial data
             return SystemStats()
 
+    async def _collect_metrics(self) -> tuple[SystemStats, DerivedStats]:
+        base = await self._get_stats_safe()
+        vram_used_pct = _compute_used_pct(base.vram_total, base.vram_free)
+        ram_used_pct = _compute_used_pct(base.ram_total, base.ram_free)
+        derived = DerivedStats(
+            vram_total=base.vram_total,
+            vram_free=base.vram_free,
+            vram_used_pct=vram_used_pct,
+            ram_total=base.ram_total,
+            ram_free=base.ram_free,
+            ram_used_pct=ram_used_pct,
+        )
+        return base, derived
+
+
+def _compute_used_pct(total: Optional[float], free: Optional[float]) -> Optional[float]:
+    try:
+        if total is None or free is None:
+            return None
+        total_f = float(total)
+        free_f = float(free)
+        if total_f <= 0:
+            return None
+        used = max(0.0, min(1.0, (total_f - max(0.0, free_f)) / total_f))
+        return round(used * 100.0, 2)
+    except Exception:
+        return None
+
 
 __all__ = [
     "RemediationResult",
     "RemediationAction",
     "MemoryHygiene",
+    "DerivedStats",
 ]
