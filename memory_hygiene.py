@@ -11,6 +11,7 @@ subsequent commits.
 from __future__ import annotations
 
 import time
+import asyncio
 from dataclasses import dataclass
 from typing import Optional, Literal, Any
 
@@ -144,14 +145,23 @@ class MemoryHygiene:
             )
 
         action = self._choose_initial_action(self._cfg.action_policy)
+        after, attempts, final_action, outcome_reason, success = (
+            await self._remediate_cycle(
+                initial_action=action,
+                initial_reason=pressure_reason,
+                cycle_start=start_ts,
+            )
+        )
+        # Set cooldown after any attempted cycle (success or not)
+        self._cooldown_until = time.monotonic() + float(self._cfg.cooldown_seconds)
         return RemediationResult(
             before=before,
-            after=None,
-            action=action,
-            attempts=0,
+            after=after,
+            action=final_action,
+            attempts=attempts,
             elapsed_seconds=max(0.0, time.monotonic() - start_ts),
-            reason=pressure_reason,
-            success=False,
+            reason=outcome_reason,
+            success=success,
         )
 
     async def _get_stats_safe(self) -> SystemStats:
@@ -188,6 +198,68 @@ class MemoryHygiene:
 
     def _choose_initial_action(self, policy: str) -> RemediationAction:
         return _initial_action_for(policy)
+
+    async def _remediate_cycle(
+        self,
+        *,
+        initial_action: RemediationAction,
+        initial_reason: str,
+        cycle_start: float,
+    ) -> tuple[Optional[SystemStats], int, RemediationAction, str, bool]:
+        attempts = 0
+        action = initial_action
+        escalated = False
+        last_stats: Optional[SystemStats] = None
+
+        max_retries = max(0, int(self._cfg.max_retries))
+        sleep_between = max(0, int(self._cfg.sleep_between_attempts_seconds))
+        max_cycle_s = max(0, int(self._cfg.max_cycle_duration_seconds))
+
+        def time_budget_exhausted() -> bool:
+            if max_cycle_s <= 0:
+                return False
+            return (time.monotonic() - cycle_start) >= max_cycle_s
+
+        outcome_reason = initial_reason
+
+        while True:
+            # Execute remediation step
+            free_flag, unload_flag = _flags_for_action(action)
+            try:
+                await self._client.free(
+                    free_memory=free_flag, unload_models=unload_flag
+                )
+            except Exception:
+                # Continue even on errors; treat as unsuccessful attempt
+                pass
+
+            # Wait and re-measure
+            if sleep_between > 0:
+                try:
+                    await asyncio.sleep(sleep_between)
+                except Exception:
+                    pass
+
+            last, derived = await self._collect_metrics()
+            last_stats = last
+            if self._pressure_reason(derived) is None:
+                outcome_reason = "targets_met"
+                return last_stats, attempts + 1, action, outcome_reason, True
+
+            attempts += 1
+            if attempts > max_retries:
+                outcome_reason = "max_retries_exhausted"
+                return last_stats, attempts, action, outcome_reason, False
+
+            if time_budget_exhausted():
+                outcome_reason = "max_duration_reached"
+                return last_stats, attempts, action, outcome_reason, False
+
+            # Escalation logic for auto: free -> unload (once)
+            if initial_action == "auto" and not escalated:
+                action = "unload"
+                escalated = True
+            # For explicit free/unload/both, keep same action for subsequent attempts
 
 
 def _compute_used_pct(total: Optional[float], free: Optional[float]) -> Optional[float]:
@@ -253,6 +325,17 @@ def _initial_action_for(policy: str) -> RemediationAction:
     if lit == "auto":
         return "free"
     return lit
+
+
+def _flags_for_action(action: RemediationAction) -> tuple[bool, bool]:
+    if action == "free":
+        return True, False
+    if action == "unload":
+        return False, True
+    if action == "both":
+        return True, True
+    # auto is staged; when executing a step, treat like free unless escalated update chooses unload
+    return True, False
 
 
 __all__ = [
