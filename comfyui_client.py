@@ -263,28 +263,65 @@ class ComfyUILocalClient(ComfyUIClientProtocol):
         except _MappedConnError as e:
             raise e.to_public_error(route=route, method=method)
 
-        # Parse known fields, tolerate missing/unknown
-        vram_total = (
-            _coerce_optional_float(data.get("vram_total"))
-            if isinstance(data, dict)
-            else None
-        )
-        vram_free = (
-            _coerce_optional_float(data.get("vram_free"))
-            if isinstance(data, dict)
-            else None
-        )
-        torch_vram_free = (
-            _coerce_optional_float(data.get("torch_vram_free"))
-            if isinstance(data, dict)
-            else None
-        )
-        ram_total = _coerce_optional_float(
-            (data.get("ram_total")) if isinstance(data, dict) else None
-        )
-        ram_free = _coerce_optional_float(
-            (data.get("ram_free")) if isinstance(data, dict) else None
-        )
+        # Parse known fields, tolerate missing/unknown; try alternate shapes; fallback to torch
+        vram_total = None
+        vram_free = None
+        torch_vram_free = None
+        ram_total = None
+        ram_free = None
+
+        if isinstance(data, dict):
+            vram_total = _coerce_optional_float(data.get("vram_total"))
+            vram_free = _coerce_optional_float(data.get("vram_free"))
+            torch_vram_free = _coerce_optional_float(data.get("torch_vram_free"))
+            ram_total = _coerce_optional_float(data.get("ram_total"))
+            ram_free = _coerce_optional_float(data.get("ram_free"))
+
+            # Common alternates
+            if vram_total is None:
+                vram_total = _coerce_optional_float(data.get("total_vram"))
+            if vram_free is None:
+                vram_free = _coerce_optional_float(data.get("free_vram"))
+
+            vram_obj = data.get("vram") if isinstance(data.get("vram"), dict) else None
+            if vram_obj:
+                if vram_total is None:
+                    vram_total = _coerce_optional_float(vram_obj.get("total"))
+                if vram_free is None:
+                    vram_free = _coerce_optional_float(vram_obj.get("free"))
+
+            ram_obj = data.get("ram") if isinstance(data.get("ram"), dict) else None
+            if ram_obj:
+                if ram_total is None:
+                    ram_total = _coerce_optional_float(ram_obj.get("total"))
+                if ram_free is None:
+                    ram_free = _coerce_optional_float(ram_obj.get("free"))
+
+            # devices[0] fallback (common in mock/alt servers)
+            devices = (
+                data.get("devices") if isinstance(data.get("devices"), list) else None
+            )
+            if devices and len(devices) > 0 and isinstance(devices[0], dict):
+                dev0 = devices[0]
+                if vram_total is None:
+                    vram_total = _coerce_optional_float(dev0.get("vram_total"))
+                if vram_free is None:
+                    vram_free = _coerce_optional_float(dev0.get("vram_free"))
+        # Note: we rely solely on server-reported values; no local torch fallback
+
+        # Optional debug logging of reported stats
+        if self._logger:
+            try:
+                self._logger.debug(
+                    "ComfyUI /system_stats: vram_total=%s vram_free=%s torch_vram_free=%s ram_total=%s ram_free=%s",
+                    vram_total,
+                    vram_free,
+                    torch_vram_free,
+                    ram_total,
+                    ram_free,
+                )
+            except Exception:
+                pass
         return SystemStats(
             vram_total=vram_total,
             vram_free=vram_free,
