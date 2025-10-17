@@ -78,6 +78,7 @@ class MemoryHygiene:
         self._client = client
         self._cfg = cfg
         self._logger = logger
+        self._cooldown_until: float = 0.0
 
     async def check_and_remediate(self) -> RemediationResult:
         """Run a single hygiene cycle.
@@ -105,7 +106,7 @@ class MemoryHygiene:
         except Exception:
             supported = False
 
-        before, _ = await self._collect_metrics()
+        before, derived = await self._collect_metrics()
 
         if not supported:
             return RemediationResult(
@@ -118,15 +119,39 @@ class MemoryHygiene:
                 success=True,
             )
 
-        # Placeholder: policy decision and remediation will be implemented later
+        now = time.monotonic()
+        if now < self._cooldown_until:
+            return RemediationResult(
+                before=before,
+                after=None,
+                action="none",
+                attempts=0,
+                elapsed_seconds=max(0.0, now - start_ts),
+                reason="cooldown_active",
+                success=True,
+            )
+
+        pressure_reason = self._pressure_reason(derived)
+        if pressure_reason is None:
+            return RemediationResult(
+                before=before,
+                after=None,
+                action="none",
+                attempts=0,
+                elapsed_seconds=max(0.0, time.monotonic() - start_ts),
+                reason="no_pressure",
+                success=True,
+            )
+
+        action = self._choose_initial_action(self._cfg.action_policy)
         return RemediationResult(
             before=before,
             after=None,
-            action="none",
+            action=action,
             attempts=0,
             elapsed_seconds=max(0.0, time.monotonic() - start_ts),
-            reason="policy_not_implemented",
-            success=True,
+            reason=pressure_reason,
+            success=False,
         )
 
     async def _get_stats_safe(self) -> SystemStats:
@@ -150,6 +175,20 @@ class MemoryHygiene:
         )
         return base, derived
 
+    def _pressure_reason(self, d: DerivedStats) -> Optional[str]:
+        if _gt_pct(d.vram_used_pct, self._cfg.vram_usage_pct_max):
+            return f"vram_used_pct {d.vram_used_pct}% > {self._cfg.vram_usage_pct_max}%"
+        if _lt_bytes(d.vram_free, self._cfg.vram_min_free_mb):
+            return f"vram_free below {self._cfg.vram_min_free_mb}MB"
+        if _gt_pct(d.ram_used_pct, self._cfg.ram_usage_pct_max):
+            return f"ram_used_pct {d.ram_used_pct}% > {self._cfg.ram_usage_pct_max}%"
+        if _lt_bytes(d.ram_free, self._cfg.ram_min_free_mb):
+            return f"ram_free below {self._cfg.ram_min_free_mb}MB"
+        return None
+
+    def _choose_initial_action(self, policy: str) -> RemediationAction:
+        return _initial_action_for(policy)
+
 
 def _compute_used_pct(total: Optional[float], free: Optional[float]) -> Optional[float]:
     try:
@@ -163,6 +202,57 @@ def _compute_used_pct(total: Optional[float], free: Optional[float]) -> Optional
         return round(used * 100.0, 2)
     except Exception:
         return None
+
+
+def _mb_to_bytes(mb: Optional[int]) -> Optional[float]:
+    if mb is None:
+        return None
+    try:
+        return float(max(0, int(mb))) * 1024.0 * 1024.0
+    except Exception:
+        return None
+
+
+def _gt_pct(value: Optional[float], threshold_pct: Optional[int]) -> bool:
+    if value is None or threshold_pct is None:
+        return False
+    try:
+        return float(value) > float(threshold_pct)
+    except Exception:
+        return False
+
+
+def _lt_bytes(value_bytes: Optional[float], threshold_mb: Optional[int]) -> bool:
+    if value_bytes is None or threshold_mb is None:
+        return False
+    thr = _mb_to_bytes(threshold_mb)
+    if thr is None:
+        return False
+    try:
+        return float(value_bytes) < float(thr)
+    except Exception:
+        return False
+
+
+def _normalize_policy(policy: str) -> str:
+    try:
+        return str(policy).strip().lower()
+    except Exception:
+        return "auto"
+
+
+def _action_literal(policy: str) -> RemediationAction:
+    p = _normalize_policy(policy)
+    if p in ("free", "unload", "both"):
+        return p  # type: ignore[return-value]
+    return "auto"
+
+
+def _initial_action_for(policy: str) -> RemediationAction:
+    lit = _action_literal(policy)
+    if lit == "auto":
+        return "free"
+    return lit
 
 
 __all__ = [
