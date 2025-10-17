@@ -134,6 +134,12 @@ class ComfyUIClientProtocol(Protocol):
         `ComfyUIClientError` subclasses on failure; returns `None` on success.
         """
 
+    async def supports_hygiene(self) -> bool:
+        """Return True if both `/system_stats` and `/free` are supported.
+
+        Performs a one-time capability probe; caches results for the session.
+        """
+
 
 class ComfyUILocalClient(ComfyUIClientProtocol):
     """Local HTTP/WebSocket client for a running ComfyUI instance.
@@ -173,6 +179,10 @@ class ComfyUILocalClient(ComfyUIClientProtocol):
         # WebSocket reconnect policy (commit 4)
         self._ws_max_reconnect_attempts: int = 5
         self._ws_max_total_backoff_seconds: float = 30.0
+        # Capability probe cache (None = unknown, True/False = probed)
+        self._supports_system_stats: Optional[bool] = None
+        self._supports_free: Optional[bool] = None
+        self._capability_warning_emitted: bool = False
 
     # Lifecycle methods may be implemented later; for now they act as no-ops.
     async def __aenter__(self) -> "ComfyUILocalClient":
@@ -450,6 +460,67 @@ class ComfyUILocalClient(ComfyUIClientProtocol):
             raise e.to_public_error(route=route, method=method)
         except _MappedConnError as e:
             raise e.to_public_error(route=route, method=method)
+
+    async def supports_hygiene(self) -> bool:  # type: ignore[override]
+        # If both probed, return cached decision
+        if self._supports_system_stats is not None and self._supports_free is not None:
+            return bool(self._supports_system_stats and self._supports_free)
+
+        await self._probe_capabilities_once()
+        supported = bool(
+            (self._supports_system_stats is True) and (self._supports_free is True)
+        )
+        if not supported and not self._capability_warning_emitted and self._logger:
+            try:
+                self._logger.warning(
+                    "ComfyUI client: hygiene disabled — missing /system_stats or /free support"
+                )
+            except Exception:
+                pass
+            self._capability_warning_emitted = True
+        return supported
+
+    async def _probe_capabilities_once(self) -> None:
+        """Probe `/system_stats` and `/free` capabilities once and cache results.
+
+        Only marks capabilities as False on definitive 404/405 responses. Transient
+        failures leave the capability as None so a future call may retry.
+        """
+        short_timeout = min(self._timeout, 3.0)
+
+        # Probe /system_stats support
+        if self._supports_system_stats is None:
+            route = "/system_stats"
+            url = self._join_http(route)
+            try:
+                await self._http_request_json(
+                    "GET",
+                    url,
+                    json_payload=None,
+                    timeout_s=short_timeout,
+                    retry_idempotent=False,
+                )
+                self._supports_system_stats = True
+            except ComfyUIClientError as e:
+                if getattr(e, "status", None) in (404, 405):
+                    self._supports_system_stats = False
+
+        # Probe /free support (no-op body)
+        if self._supports_free is None:
+            route = "/free"
+            url = self._join_http(route)
+            try:
+                await self._http_request_json(
+                    "POST",
+                    url,
+                    json_payload={"free_memory": False, "unload_models": False},
+                    timeout_s=short_timeout,
+                    retry_idempotent=False,
+                )
+                self._supports_free = True
+            except ComfyUIClientError as e:
+                if getattr(e, "status", None) in (404, 405):
+                    self._supports_free = False
 
 
 # Runtime dependency; imported here to avoid issues if module is scanned without execution
