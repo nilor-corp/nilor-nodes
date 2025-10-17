@@ -80,6 +80,9 @@ class MemoryHygiene:
         self._cfg = cfg
         self._logger = logger
         self._cooldown_until: float = 0.0
+        # Hardened capability state: disable guardian for session after unsupported
+        self._capability_disabled: bool = False
+        self._unsupported_warned: bool = False
 
     async def check_and_remediate(self) -> RemediationResult:
         """Run a single hygiene cycle.
@@ -111,6 +114,18 @@ class MemoryHygiene:
                 success=True,
             )
 
+        # Session-wide disable if previously detected unsupported endpoints
+        if self._capability_disabled:
+            return RemediationResult(
+                before=await self._get_stats_safe(),
+                after=None,
+                action="none",
+                attempts=0,
+                elapsed_seconds=max(0.0, time.monotonic() - start_ts),
+                reason="capability_unsupported",
+                success=True,
+            )
+
         try:
             supported = await self._client.supports_hygiene()
         except Exception:
@@ -119,13 +134,17 @@ class MemoryHygiene:
         before, derived = await self._collect_metrics()
 
         if not supported:
-            try:
-                if self._logger:
-                    self._logger.warning(
-                        "MemoryHygiene: unsupported endpoints; skipping."
-                    )
-            except Exception:
-                pass
+            # Disable for the rest of the session and emit a single warning
+            self._capability_disabled = True
+            if not self._unsupported_warned:
+                try:
+                    if self._logger:
+                        self._logger.warning(
+                            "MemoryHygiene: unsupported endpoints; disabling for this session."
+                        )
+                except Exception:
+                    pass
+                self._unsupported_warned = True
             return RemediationResult(
                 before=before,
                 after=None,
