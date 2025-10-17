@@ -19,6 +19,7 @@ from dotenv import load_dotenv
 from botocore.exceptions import EndpointConnectionError, ClientError
 from .logger import logger
 from .comfyui_client import ComfyUILocalClient, ComfyUIClientError
+from .memory_hygiene import MemoryHygiene
 from .config.config import load_nilor_nodes_config, NilorNodesConfig
 
 # --- Load Environment Variables ---
@@ -52,6 +53,8 @@ class WorkerConsumer:
         self.comfy_client = None
         self.is_busy = False
         self.websocket_sid = None
+        # Memory hygiene component (initialized once a client is available)
+        self.hygiene = None
 
         # Stable client_id for routing events to this worker
         self.cfg = cfg
@@ -256,6 +259,12 @@ class WorkerConsumer:
                     )
                     await asyncio.sleep(5)
                     continue
+
+                # Run memory hygiene between jobs (no-op if disabled/unsupported)
+                try:
+                    await self._run_memory_hygiene(debounce_seconds=0)
+                except Exception:
+                    pass
 
                 logger.debug(
                     "ℹ️\u2009 Nilor-Nodes (worker_consumer): Polling for messages..."
@@ -519,6 +528,11 @@ class WorkerConsumer:
             if self.current_prompt_id == prompt_id:
                 self.current_prompt_id = None
                 self.is_busy = False
+                # Debounced hygiene after job completion
+                try:
+                    asyncio.create_task(self._run_memory_hygiene(debounce_seconds=1))
+                except Exception:
+                    pass
 
     @staticmethod
     def _normalize_node_id(node_id):
@@ -545,6 +559,16 @@ async def consume_jobs():
         timeout=float(_CFG.comfy.timeout_s),
     )
 
+    # Initialize Memory Hygiene with the constructed client and loaded config
+    try:
+        consumer.hygiene = MemoryHygiene(
+            client=consumer.comfy_client,
+            cfg=_CFG.hygiene,
+            logger=logger,
+        )
+    except Exception:
+        consumer.hygiene = None
+
     # Emit concise startup configuration summary (no secrets)
     try:
         logger.info(
@@ -563,3 +587,42 @@ async def consume_jobs():
         pass
 
     await consumer.consume_loop()
+
+
+async def _sleep_seconds(seconds: int) -> None:
+    try:
+        await asyncio.sleep(max(0, int(seconds)))
+    except Exception:
+        pass
+
+
+async def _maybe_bool(value) -> bool:
+    try:
+        return bool(value)
+    except Exception:
+        return False
+
+
+async def _run_hygiene_guarded(
+    self_ref: "WorkerConsumer", debounce_seconds: int
+) -> None:
+    # No-op if not available
+    if not getattr(self_ref, "hygiene", None):
+        return
+    # Optional debounce
+    if debounce_seconds > 0:
+        await _sleep_seconds(debounce_seconds)
+    # Set maintenance busy gate
+    if self_ref.is_busy:
+        return
+    self_ref.is_busy = True
+    try:
+        await self_ref.hygiene.check_and_remediate()
+    except Exception:
+        pass
+    finally:
+        self_ref.is_busy = False
+
+
+# Bind as a method on WorkerConsumer to avoid altering class signature above
+WorkerConsumer._run_memory_hygiene = lambda self, debounce_seconds=0: _run_hygiene_guarded(self, debounce_seconds)  # type: ignore[attr-defined]
