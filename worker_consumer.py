@@ -12,6 +12,7 @@ import os
 import json
 import logging
 import asyncio
+import time
 import aiohttp
 
 from aiobotocore.session import get_session
@@ -35,6 +36,7 @@ else:
     logger.info(
         "⚠️\u2009 Nilor-Nodes: No .env file found, relying on shell environment variables."
     )
+# TODO: remove this shit above?
 
 # --- Configuration ---
 # Centralized loader provides precedence env > JSON5 and validation
@@ -61,6 +63,8 @@ class WorkerConsumer:
         self.worker_client_id = cfg.worker.worker_client_id
 
         self.current_prompt_id = None
+        # Hygiene cadence tracking
+        self._last_hygiene_check_ts = 0.0
 
     async def _initialize_sqs(self):
         """Initializes SQS queue URLs. Returns True on success, False on failure."""
@@ -262,7 +266,11 @@ class WorkerConsumer:
 
                 # Run memory hygiene between jobs (no-op if disabled/unsupported)
                 try:
-                    await self._run_memory_hygiene(debounce_seconds=0)
+                    now = time.monotonic()
+                    min_interval = max(0, int(self.cfg.hygiene.idle_poll_seconds))
+                    if now - self._last_hygiene_check_ts >= min_interval:
+                        await self._run_memory_hygiene(debounce_seconds=0)
+                        self._last_hygiene_check_ts = now
                 except Exception:
                     pass
 
