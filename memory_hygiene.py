@@ -92,6 +92,15 @@ class MemoryHygiene:
 
         if not self._cfg.enabled:
             before, _ = await self._collect_metrics()
+            try:
+                if self._logger:
+                    self._logger.debug(
+                        "MemoryHygiene: disabled; skipping remediation. vram_free=%s ram_free=%s",
+                        getattr(before, "vram_free", None),
+                        getattr(before, "ram_free", None),
+                    )
+            except Exception:
+                pass
             return RemediationResult(
                 before=before,
                 after=None,
@@ -110,6 +119,13 @@ class MemoryHygiene:
         before, derived = await self._collect_metrics()
 
         if not supported:
+            try:
+                if self._logger:
+                    self._logger.warning(
+                        "MemoryHygiene: unsupported endpoints; skipping."
+                    )
+            except Exception:
+                pass
             return RemediationResult(
                 before=before,
                 after=None,
@@ -122,6 +138,14 @@ class MemoryHygiene:
 
         now = time.monotonic()
         if now < self._cooldown_until:
+            try:
+                if self._logger:
+                    self._logger.debug(
+                        "MemoryHygiene: cooldown active for %.2fs; skipping.",
+                        max(0.0, self._cooldown_until - now),
+                    )
+            except Exception:
+                pass
             return RemediationResult(
                 before=before,
                 after=None,
@@ -134,6 +158,11 @@ class MemoryHygiene:
 
         pressure_reason = self._pressure_reason(derived)
         if pressure_reason is None:
+            try:
+                if self._logger:
+                    self._logger.debug("MemoryHygiene: no pressure; nothing to do.")
+            except Exception:
+                pass
             return RemediationResult(
                 before=before,
                 after=None,
@@ -145,6 +174,17 @@ class MemoryHygiene:
             )
 
         action = self._choose_initial_action(self._cfg.action_policy)
+        try:
+            if self._logger:
+                self._logger.info(
+                    "MemoryHygiene: start cycle action=%s reason=%s vram_free=%s ram_free=%s",
+                    action,
+                    pressure_reason,
+                    getattr(before, "vram_free", None),
+                    getattr(before, "ram_free", None),
+                )
+        except Exception:
+            pass
         after, attempts, final_action, outcome_reason, success = (
             await self._remediate_cycle(
                 initial_action=action,
@@ -154,6 +194,22 @@ class MemoryHygiene:
         )
         # Set cooldown after any attempted cycle (success or not)
         self._cooldown_until = time.monotonic() + float(self._cfg.cooldown_seconds)
+        try:
+            if self._logger:
+                self._logger.info(
+                    "MemoryHygiene: end cycle action=%s attempts=%s success=%s reason=%s vram_free_before=%s vram_free_after=%s ram_free_before=%s ram_free_after=%s elapsed=%.2fs",
+                    final_action,
+                    attempts,
+                    success,
+                    outcome_reason,
+                    getattr(before, "vram_free", None),
+                    getattr(after, "vram_free", None) if after else None,
+                    getattr(before, "ram_free", None),
+                    getattr(after, "ram_free", None) if after else None,
+                    max(0.0, time.monotonic() - start_ts),
+                )
+        except Exception:
+            pass
         return RemediationResult(
             before=before,
             after=after,
@@ -226,6 +282,15 @@ class MemoryHygiene:
             # Execute remediation step
             free_flag, unload_flag = _flags_for_action(action)
             try:
+                if self._logger:
+                    try:
+                        self._logger.debug(
+                            "MemoryHygiene: calling /free free_memory=%s unload_models=%s",
+                            free_flag,
+                            unload_flag,
+                        )
+                    except Exception:
+                        pass
                 await self._client.free(
                     free_memory=free_flag, unload_models=unload_flag
                 )
