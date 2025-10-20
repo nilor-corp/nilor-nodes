@@ -17,6 +17,9 @@ from urllib.parse import urlparse
 from pathlib import Path
 from ..logger import logger
 
+# Ensure we cache config globally
+_CONFIG: Optional["NilorNodesConfig"] = None
+
 try:  # json5 is declared in nilor-nodes/requirements.txt
     import json5  # type: ignore
 except Exception as _e:  # pragma: no cover
@@ -521,6 +524,9 @@ def load_nilor_nodes_config() -> NilorNodesConfig:
     - Reads JSON5 defaults and applies env overrides when enabled
     - Returns a typed `NilorNodesConfig`
     """
+    global _CONFIG
+    if _CONFIG is not None:
+        return _CONFIG
     try:
         from dotenv import load_dotenv  # optional dependency present in sidecar
 
@@ -532,7 +538,7 @@ def load_nilor_nodes_config() -> NilorNodesConfig:
             try:
                 if loaded:
                     logger.info(
-                        f"✅\u2009 Nilor-Nodes: Loaded environment variables from {dotenv_path}"
+                        f"✅ Nilor-Nodes: Loaded environment variables from {dotenv_path}"
                     )
                 else:
                     logger.info(
@@ -556,4 +562,12 @@ def load_nilor_nodes_config() -> NilorNodesConfig:
         )
     cfg = NilorNodesConfig.get_instance()  # type: ignore[attr-defined]
     _apply_env_overrides(cfg)
-    return cfg
+    _CONFIG = cfg
+    return _CONFIG
+
+
+def refresh_nilor_nodes_config() -> NilorNodesConfig:
+    """Clear the cached config and reload it. Intended for explicit hot-reload."""
+    global _CONFIG
+    _CONFIG = None
+    return load_nilor_nodes_config()
