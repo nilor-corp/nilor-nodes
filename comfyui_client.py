@@ -313,7 +313,7 @@ class ComfyUILocalClient(ComfyUIClientProtocol):
         if self._logger:
             try:
                 self._logger.debug(
-                    "ComfyUI /system_stats: vram_total=%s vram_free=%s torch_vram_free=%s ram_total=%s ram_free=%s",
+                    "ℹ️\u2009 Nilor-Nodes (comfyui_client): /system_stats: vram_total=%s vram_free=%s torch_vram_free=%s ram_total=%s ram_free=%s",
                     vram_total,
                     vram_free,
                     torch_vram_free,
@@ -381,7 +381,7 @@ class ComfyUILocalClient(ComfyUIClientProtocol):
                     if self._logger:
                         try:
                             self._logger.debug(
-                                f"ComfyUI client: connected websocket {url}"
+                                f"✅ Nilor-Nodes (comfyui_client): connected to websocket {url}"
                             )
                         except Exception:
                             pass
@@ -518,7 +518,7 @@ class ComfyUILocalClient(ComfyUIClientProtocol):
         if not supported and not self._capability_warning_emitted and self._logger:
             try:
                 self._logger.warning(
-                    "ComfyUI client: hygiene disabled — missing /system_stats or /free support"
+                    "⚠️\u2009 Nilor-Nodes (comfyui_client): hygiene disabled — missing /system_stats or /free support"
                 )
             except Exception:
                 pass
@@ -607,7 +607,7 @@ class _MappedHttpError(Exception):
 
     def to_public_error(self, *, route: str, method: str) -> ComfyUIClientError:
         return ComfyUIClientError(
-            f"HTTP error while calling {method} {route}",
+            f"🛑\u2009 Nilor-Nodes (comfyui_client): HTTP error while calling {method} {route}",
             route=route,
             method=method,
             status=self.status,
@@ -622,7 +622,7 @@ class _MappedConnError(Exception):
 
     def to_public_error(self, *, route: str, method: str) -> ComfyUIClientError:
         return ComfyUIClientError(
-            f"Connection error while calling {method} {route}",
+            f"🛑\u2009 Nilor-Nodes (comfyui_client): Connection error while calling {method} {route}",
             route=route,
             method=method,
             code=self.code,
@@ -683,7 +683,7 @@ def _finalize_attempts(
 ) -> BaseException:
     if isinstance(last_exc, asyncio.TimeoutError):
         return ComfyUIClientTimeout(
-            f"Timeout while calling {method} {url}",
+            f"🛑\u2009 Nilor-Nodes (comfyui_client): Timeout while calling {method} {url}",
             route=_route_from_url(url),
             method=method,
             code="timeout",
@@ -888,7 +888,7 @@ def _ensure_scheme(base: str, allowed: Tuple[str, ...]) -> None:
     if not parsed.scheme or parsed.scheme.lower() not in allowed:
         allowed_str = ", ".join(allowed)
         raise ValueError(
-            f"Base URL must start with one of [{allowed_str}]; got: {base!r}"
+            f"🛑\u2009 Nilor-Nodes (comfyui_client): Base URL must start with one of [{allowed_str}]; got: {base!r}"
         )
 
 

@@ -98,7 +98,7 @@ class MemoryHygiene:
             try:
                 if self._logger:
                     self._logger.debug(
-                        "MemoryHygiene: disabled; skipping remediation. vram_free=%s ram_free=%s",
+                        "⚠️\u2009 Nilor-Nodes (memory_hygiene): disabled; skipping remediation. vram_free=%s ram_free=%s",
                         getattr(before, "vram_free", None),
                         getattr(before, "ram_free", None),
                     )
@@ -140,7 +140,7 @@ class MemoryHygiene:
                 try:
                     if self._logger:
                         self._logger.warning(
-                            "MemoryHygiene: unsupported endpoints; disabling for this session."
+                            "⚠️\u2009 Nilor-Nodes (memory_hygiene): unsupported endpoints; disabling for this session."
                         )
                 except Exception:
                     pass
@@ -160,7 +160,7 @@ class MemoryHygiene:
             try:
                 if self._logger:
                     self._logger.debug(
-                        "MemoryHygiene: cooldown active for %.2fs; skipping.",
+                        "ℹ️\u2009 Nilor-Nodes (memory_hygiene): cooldown active for %.2fs; skipping.",
                         max(0.0, self._cooldown_until - now),
                     )
             except Exception:
@@ -179,7 +179,9 @@ class MemoryHygiene:
         if pressure_reason is None:
             try:
                 if self._logger:
-                    self._logger.debug("MemoryHygiene: no pressure; nothing to do.")
+                    self._logger.debug(
+                        "ℹ️\u2009 Nilor-Nodes (memory_hygiene): no pressure; nothing to do."
+                    )
             except Exception:
                 pass
             return RemediationResult(
@@ -196,7 +198,7 @@ class MemoryHygiene:
         try:
             if self._logger:
                 self._logger.info(
-                    "MemoryHygiene: start cycle action=%s reason=%s vram_free=%s ram_free=%s",
+                    "✅ Nilor-Nodes (memory_hygiene): start cycle action=%s reason=%s vram_free=%s ram_free=%s",
                     action,
                     pressure_reason,
                     getattr(before, "vram_free", None),
@@ -216,7 +218,7 @@ class MemoryHygiene:
         try:
             if self._logger:
                 self._logger.info(
-                    "MemoryHygiene: end cycle action=%s attempts=%s success=%s reason=%s vram_free_before=%s vram_free_after=%s ram_free_before=%s ram_free_after=%s elapsed=%.2fs",
+                    "✅ Nilor-Nodes (memory_hygiene): end cycle action=%s attempts=%s success=%s reason=%s vram_free_before=%s vram_free_after=%s ram_free_before=%s ram_free_after=%s elapsed=%.2fs",
                     final_action,
                     attempts,
                     success,
@@ -304,7 +306,7 @@ class MemoryHygiene:
                 if self._logger:
                     try:
                         self._logger.debug(
-                            "MemoryHygiene: calling /free free_memory=%s unload_models=%s",
+                            "ℹ️\u2009 Nilor-Nodes (memory_hygiene): calling /free free_memory=%s unload_models=%s",
                             free_flag,
                             unload_flag,
                         )
