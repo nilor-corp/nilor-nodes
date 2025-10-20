@@ -550,6 +550,14 @@ class WorkerConsumer:
             return None
         return node_id
 
+    async def _run_memory_hygiene(self, debounce_seconds: int = 0) -> None:
+        """Run memory hygiene with optional debounce, guarded by busy state.
+
+        Delegates to the shared hygiene component and ensures we do not
+        pull new work while remediation is running.
+        """
+        await _run_hygiene_guarded(self, debounce_seconds)
+
 
 async def consume_jobs():
     """Entry point function to be called in a background thread."""
@@ -594,6 +602,30 @@ async def consume_jobs():
     except Exception:
         pass
 
+    # Emit concise hygiene summary (effective values)
+    try:
+        h = _CFG.hygiene
+        logger.info(
+            (
+                "ℹ️\u2009 Nilor-Nodes: startup hygiene — enabled=%s, idle_poll_s=%s, "
+                "vram_used_pct_max=%s, ram_used_pct_max=%s, vram_min_free_mb=%s, ram_min_free_mb=%s, "
+                "policy=%s, max_retries=%s, cooldown_s=%s, sleep_between_s=%s, max_cycle_s=%s"
+            ),
+            str(h.enabled),
+            str(h.idle_poll_seconds),
+            str(h.vram_usage_pct_max),
+            str(h.ram_usage_pct_max),
+            str(h.vram_min_free_mb),
+            str(h.ram_min_free_mb),
+            h.action_policy,
+            str(h.max_retries),
+            str(h.cooldown_seconds),
+            str(h.sleep_between_attempts_seconds),
+            str(h.max_cycle_duration_seconds),
+        )
+    except Exception:
+        pass
+
     await consumer.consume_loop()
 
 
@@ -630,7 +662,3 @@ async def _run_hygiene_guarded(
         pass
     finally:
         self_ref.is_busy = False
-
-
-# Bind as a method on WorkerConsumer to avoid altering class signature above
-WorkerConsumer._run_memory_hygiene = lambda self, debounce_seconds=0: _run_hygiene_guarded(self, debounce_seconds)  # type: ignore[attr-defined]
