@@ -14,6 +14,8 @@ import socket
 from dataclasses import dataclass
 from typing import Dict, Optional
 from urllib.parse import urlparse
+from pathlib import Path
+from ..logger import logger
 
 try:  # json5 is declared in nilor-nodes/requirements.txt
     import json5  # type: ignore
@@ -522,7 +524,29 @@ def load_nilor_nodes_config() -> NilorNodesConfig:
     try:
         from dotenv import load_dotenv  # optional dependency present in sidecar
 
-        load_dotenv()
+        try:
+            # Load .env next to nilor-nodes (ComfyUI/custom_nodes/nilor-nodes/.env) first
+            here = Path(__file__).resolve().parent.parent  # .../nilor-nodes/
+            dotenv_path = here / ".env"
+            loaded = load_dotenv(dotenv_path=dotenv_path)
+            try:
+                if loaded:
+                    logger.info(
+                        f"✅\u2009 Nilor-Nodes: Loaded environment variables from {dotenv_path}"
+                    )
+                else:
+                    logger.info(
+                        "⚠️\u2009 Nilor-Nodes: No .env file found, relying on shell environment variables."
+                    )
+            except Exception:
+                pass
+        except Exception:
+            pass
+        try:
+            # Also allow default search (repo root / current working dir)
+            load_dotenv()
+        except Exception:
+            pass
     except Exception:
         pass
     # Use BaseConfig-backed singleton load

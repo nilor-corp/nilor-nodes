@@ -16,27 +16,12 @@ import time
 import aiohttp
 
 from aiobotocore.session import get_session
-from dotenv import load_dotenv
 from botocore.exceptions import EndpointConnectionError, ClientError
 from .logger import logger
 from .comfyui_client import ComfyUILocalClient, ComfyUIClientError
 from .memory_hygiene import MemoryHygiene
 from .config.config import load_nilor_nodes_config, NilorNodesConfig
 
-# --- Load Environment Variables ---
-# Load from the .env file in the same directory
-current_dir = os.path.dirname(os.path.abspath(__file__))
-dotenv_path = os.path.join(current_dir, ".env")
-if os.path.exists(dotenv_path):
-    load_dotenv(dotenv_path=dotenv_path)
-    logger.info(
-        f"✅\u2009 Nilor-Nodes: Loaded environment variables from {dotenv_path}"
-    )
-else:
-    logger.info(
-        "⚠️\u2009 Nilor-Nodes: No .env file found, relying on shell environment variables."
-    )
-# TODO: remove this shit above?
 
 # --- Configuration ---
 # Centralized loader provides precedence env > JSON5 and validation
