@@ -14,6 +14,11 @@ import socket
 from dataclasses import dataclass
 from typing import Dict, Optional
 from urllib.parse import urlparse
+from pathlib import Path
+from ..logger import logger
+
+# Ensure we cache config globally
+_CONFIG: Optional["NilorNodesConfig"] = None
 
 try:  # json5 is declared in nilor-nodes/requirements.txt
     import json5  # type: ignore
@@ -87,6 +92,37 @@ class WorkerConfig:
     worker_client_id: str
 
 
+@dataclass(frozen=True)
+class MemoryHygieneConfig:
+    """Configuration for Memory Guardian hygiene between jobs.
+
+    Args:
+        enabled: Feature flag to enable/disable hygiene.
+        idle_poll_seconds: How often to check while idle.
+        vram_usage_pct_max: If used VRAM exceeds this percent, trigger remediation.
+        ram_usage_pct_max: If used RAM exceeds this percent, trigger remediation.
+        vram_min_free_mb: Absolute minimum free VRAM (MB) threshold.
+        ram_min_free_mb: Absolute minimum free RAM (MB) threshold.
+        action_policy: One of {free, unload, both, auto}.
+        max_retries: Max remediation attempts per cycle.
+        cooldown_seconds: Cooldown between remediation cycles.
+        sleep_between_attempts_seconds: Wait time after /free before re-checking.
+        max_cycle_duration_seconds: Hard cap for a single remediation cycle.
+    """
+
+    enabled: bool
+    idle_poll_seconds: int
+    vram_usage_pct_max: int
+    ram_usage_pct_max: int
+    vram_min_free_mb: int
+    ram_min_free_mb: int
+    action_policy: str
+    max_retries: int
+    cooldown_seconds: int
+    sleep_between_attempts_seconds: int
+    max_cycle_duration_seconds: int
+
+
 @dataclass
 class NilorNodesConfig(BaseConfig):
     """Aggregate configuration for the Nilor-Nodes sidecar.
@@ -101,6 +137,7 @@ class NilorNodesConfig(BaseConfig):
     worker: WorkerConfig
     allow_env_override: bool
     sqs_enabled: bool
+    hygiene: MemoryHygieneConfig
 
     @classmethod
     def _get_config_path(cls) -> str:
@@ -164,11 +201,48 @@ class NilorNodesConfig(BaseConfig):
             worker_client_id=worker_client_id,
         )
 
+        # Memory hygiene
+        hygiene_cfg = MemoryHygieneConfig(
+            enabled=_coerce_bool(config_dict.get("NILOR_MEMORY_HYGIENE_ENABLED", True)),
+            idle_poll_seconds=int(
+                config_dict.get("NILOR_MEMORY_HYGIENE_IDLE_POLL_SECONDS", 5)
+            ),
+            vram_usage_pct_max=int(
+                config_dict.get("NILOR_MEMORY_HYGIENE_VRAM_USAGE_PCT_MAX", 88)
+            ),
+            ram_usage_pct_max=int(
+                config_dict.get("NILOR_MEMORY_HYGIENE_RAM_USAGE_PCT_MAX", 90)
+            ),
+            vram_min_free_mb=int(
+                config_dict.get("NILOR_MEMORY_HYGIENE_VRAM_MIN_FREE_MB", 2048)
+            ),
+            ram_min_free_mb=int(
+                config_dict.get("NILOR_MEMORY_HYGIENE_RAM_MIN_FREE_MB", 4096)
+            ),
+            action_policy=str(
+                config_dict.get("NILOR_MEMORY_HYGIENE_ACTION_POLICY", "auto")
+            ).strip(),
+            max_retries=int(config_dict.get("NILOR_MEMORY_HYGIENE_MAX_RETRIES", 2)),
+            cooldown_seconds=int(
+                config_dict.get("NILOR_MEMORY_HYGIENE_COOLDOWN_SECONDS", 60)
+            ),
+            sleep_between_attempts_seconds=int(
+                config_dict.get(
+                    "NILOR_MEMORY_HYGIENE_SLEEP_BETWEEN_ATTEMPTS_SECONDS", 4
+                )
+            ),
+            max_cycle_duration_seconds=int(
+                config_dict.get("NILOR_MEMORY_HYGIENE_MAX_CYCLE_DURATION_SECONDS", 15)
+            ),
+        )
+        _validate_hygiene_config(hygiene_cfg)
+
         cfg = cls(
             comfy=comfy_cfg,
             worker=worker_cfg,
             allow_env_override=allow_env_override,
             sqs_enabled=sqs_enabled,
+            hygiene=hygiene_cfg,
         )
         _validate_comfy_config(cfg.comfy)
         _validate_worker_config(cfg.worker)
@@ -273,6 +347,66 @@ def _apply_env_overrides(cfg: NilorNodesConfig) -> None:
     # Re-validate after overrides
     _validate_comfy_config(cfg.comfy)
     _validate_worker_config(cfg.worker)
+    # Hygiene (rebuild frozen dataclass)
+    hygiene_enabled = _coerce_bool(
+        os.getenv("NILOR_MEMORY_HYGIENE_ENABLED", cfg.hygiene.enabled)
+    )
+    hygiene_idle_poll = int(
+        os.getenv(
+            "NILOR_MEMORY_HYGIENE_IDLE_POLL_SECONDS", cfg.hygiene.idle_poll_seconds
+        )
+    )
+    hygiene_vram_pct = int(
+        os.getenv(
+            "NILOR_MEMORY_HYGIENE_VRAM_USAGE_PCT_MAX", cfg.hygiene.vram_usage_pct_max
+        )
+    )
+    hygiene_ram_pct = int(
+        os.getenv(
+            "NILOR_MEMORY_HYGIENE_RAM_USAGE_PCT_MAX", cfg.hygiene.ram_usage_pct_max
+        )
+    )
+    hygiene_vram_min = int(
+        os.getenv("NILOR_MEMORY_HYGIENE_VRAM_MIN_FREE_MB", cfg.hygiene.vram_min_free_mb)
+    )
+    hygiene_ram_min = int(
+        os.getenv("NILOR_MEMORY_HYGIENE_RAM_MIN_FREE_MB", cfg.hygiene.ram_min_free_mb)
+    )
+    hygiene_policy = str(
+        os.getenv("NILOR_MEMORY_HYGIENE_ACTION_POLICY", cfg.hygiene.action_policy)
+    ).strip()
+    hygiene_max_retries = int(
+        os.getenv("NILOR_MEMORY_HYGIENE_MAX_RETRIES", cfg.hygiene.max_retries)
+    )
+    hygiene_cooldown = int(
+        os.getenv("NILOR_MEMORY_HYGIENE_COOLDOWN_SECONDS", cfg.hygiene.cooldown_seconds)
+    )
+    hygiene_sleep_between = int(
+        os.getenv(
+            "NILOR_MEMORY_HYGIENE_SLEEP_BETWEEN_ATTEMPTS_SECONDS",
+            cfg.hygiene.sleep_between_attempts_seconds,
+        )
+    )
+    hygiene_max_cycle = int(
+        os.getenv(
+            "NILOR_MEMORY_HYGIENE_MAX_CYCLE_DURATION_SECONDS",
+            cfg.hygiene.max_cycle_duration_seconds,
+        )
+    )
+    cfg.hygiene = MemoryHygieneConfig(
+        enabled=hygiene_enabled,
+        idle_poll_seconds=hygiene_idle_poll,
+        vram_usage_pct_max=hygiene_vram_pct,
+        ram_usage_pct_max=hygiene_ram_pct,
+        vram_min_free_mb=hygiene_vram_min,
+        ram_min_free_mb=hygiene_ram_min,
+        action_policy=hygiene_policy,
+        max_retries=hygiene_max_retries,
+        cooldown_seconds=hygiene_cooldown,
+        sleep_between_attempts_seconds=hygiene_sleep_between,
+        max_cycle_duration_seconds=hygiene_max_cycle,
+    )
+    _validate_hygiene_config(cfg.hygiene)
 
 
 def _validate_comfy_config(cfg: ComfyApiConfig) -> None:
@@ -304,6 +438,33 @@ def _validate_worker_config(cfg: WorkerConfig) -> None:
     if cfg.max_messages <= 0:
         raise ValueError(
             f"NILOR_SQS_MAX_MESSAGES must be a positive integer; got {cfg.max_messages}"
+        )
+
+
+def _validate_hygiene_config(cfg: MemoryHygieneConfig) -> None:
+    if cfg.idle_poll_seconds < 0:
+        raise ValueError("NILOR_MEMORY_HYGIENE_IDLE_POLL_SECONDS must be >= 0")
+    if not 0 <= cfg.vram_usage_pct_max <= 100:
+        raise ValueError(
+            "NILOR_MEMORY_HYGIENE_VRAM_USAGE_PCT_MAX must be within [0, 100]"
+        )
+    if not 0 <= cfg.ram_usage_pct_max <= 100:
+        raise ValueError(
+            "NILOR_MEMORY_HYGIENE_RAM_USAGE_PCT_MAX must be within [0, 100]"
+        )
+    if cfg.vram_min_free_mb < 0 or cfg.ram_min_free_mb < 0:
+        raise ValueError("Memory hygiene min free MB must be >= 0")
+    if cfg.max_retries < 0:
+        raise ValueError("NILOR_MEMORY_HYGIENE_MAX_RETRIES must be >= 0")
+    if cfg.cooldown_seconds < 0 or cfg.sleep_between_attempts_seconds < 0:
+        raise ValueError("Memory hygiene cooldown/sleep must be >= 0")
+    if cfg.max_cycle_duration_seconds < 0:
+        raise ValueError("Memory hygiene max cycle duration must be >= 0")
+    allowed = {"free", "unload", "both", "auto"}
+    if cfg.action_policy not in allowed:
+        allowed_str = ", ".join(sorted(allowed))
+        raise ValueError(
+            f"NILOR_MEMORY_HYGIENE_ACTION_POLICY must be one of {{{allowed_str}}}"
         )
 
 
@@ -363,10 +524,35 @@ def load_nilor_nodes_config() -> NilorNodesConfig:
     - Reads JSON5 defaults and applies env overrides when enabled
     - Returns a typed `NilorNodesConfig`
     """
+    global _CONFIG
+    if _CONFIG is not None:
+        return _CONFIG
     try:
         from dotenv import load_dotenv  # optional dependency present in sidecar
 
-        load_dotenv()
+        try:
+            # Load .env next to nilor-nodes (ComfyUI/custom_nodes/nilor-nodes/.env) first
+            here = Path(__file__).resolve().parent.parent  # .../nilor-nodes/
+            dotenv_path = here / ".env"
+            loaded = load_dotenv(dotenv_path=dotenv_path)
+            try:
+                if loaded:
+                    logger.info(
+                        f"✅ Nilor-Nodes: Loaded environment variables from {dotenv_path}"
+                    )
+                else:
+                    logger.info(
+                        "⚠️\u2009 Nilor-Nodes: No .env file found, relying on shell environment variables."
+                    )
+            except Exception:
+                pass
+        except Exception:
+            pass
+        try:
+            # Also allow default search (repo root / current working dir)
+            load_dotenv()
+        except Exception:
+            pass
     except Exception:
         pass
     # Use BaseConfig-backed singleton load
@@ -376,4 +562,12 @@ def load_nilor_nodes_config() -> NilorNodesConfig:
         )
     cfg = NilorNodesConfig.get_instance()  # type: ignore[attr-defined]
     _apply_env_overrides(cfg)
-    return cfg
+    _CONFIG = cfg
+    return _CONFIG
+
+
+def refresh_nilor_nodes_config() -> NilorNodesConfig:
+    """Clear the cached config and reload it. Intended for explicit hot-reload."""
+    global _CONFIG
+    _CONFIG = None
+    return load_nilor_nodes_config()

@@ -12,28 +12,16 @@ import os
 import json
 import logging
 import asyncio
+import time
 import aiohttp
 
 from aiobotocore.session import get_session
-from dotenv import load_dotenv
 from botocore.exceptions import EndpointConnectionError, ClientError
 from .logger import logger
 from .comfyui_client import ComfyUILocalClient, ComfyUIClientError
+from .memory_hygiene import MemoryHygiene
 from .config.config import load_nilor_nodes_config, NilorNodesConfig
 
-# --- Load Environment Variables ---
-# Load from the .env file in the same directory
-current_dir = os.path.dirname(os.path.abspath(__file__))
-dotenv_path = os.path.join(current_dir, ".env")
-if os.path.exists(dotenv_path):
-    load_dotenv(dotenv_path=dotenv_path)
-    logger.info(
-        f"✅\u2009 Nilor-Nodes: Loaded environment variables from {dotenv_path}"
-    )
-else:
-    logger.info(
-        "⚠️\u2009 Nilor-Nodes: No .env file found, relying on shell environment variables."
-    )
 
 # --- Configuration ---
 # Centralized loader provides precedence env > JSON5 and validation
@@ -52,12 +40,16 @@ class WorkerConsumer:
         self.comfy_client = None
         self.is_busy = False
         self.websocket_sid = None
+        # Memory hygiene component (initialized once a client is available)
+        self.hygiene = None
 
         # Stable client_id for routing events to this worker
         self.cfg = cfg
         self.worker_client_id = cfg.worker.worker_client_id
 
         self.current_prompt_id = None
+        # Hygiene cadence tracking
+        self._last_hygiene_check_ts = 0.0
 
     async def _initialize_sqs(self):
         """Initializes SQS queue URLs. Returns True on success, False on failure."""
@@ -256,6 +248,16 @@ class WorkerConsumer:
                     )
                     await asyncio.sleep(5)
                     continue
+
+                # Run memory hygiene between jobs (no-op if disabled/unsupported)
+                try:
+                    now = time.monotonic()
+                    min_interval = max(0, int(self.cfg.hygiene.idle_poll_seconds))
+                    if now - self._last_hygiene_check_ts >= min_interval:
+                        await self._run_memory_hygiene(debounce_seconds=0)
+                        self._last_hygiene_check_ts = now
+                except Exception:
+                    pass
 
                 logger.debug(
                     "ℹ️\u2009 Nilor-Nodes (worker_consumer): Polling for messages..."
@@ -519,6 +521,11 @@ class WorkerConsumer:
             if self.current_prompt_id == prompt_id:
                 self.current_prompt_id = None
                 self.is_busy = False
+                # Debounced hygiene after job completion
+                try:
+                    asyncio.create_task(self._run_memory_hygiene(debounce_seconds=1))
+                except Exception:
+                    pass
 
     @staticmethod
     def _normalize_node_id(node_id):
@@ -527,6 +534,14 @@ class WorkerConsumer:
         if isinstance(node_id, str) and node_id.strip() in ("", "None"):
             return None
         return node_id
+
+    async def _run_memory_hygiene(self, debounce_seconds: int = 0) -> None:
+        """Run memory hygiene with optional debounce, guarded by busy state.
+
+        Delegates to the shared hygiene component and ensures we do not
+        pull new work while remediation is running.
+        """
+        await _run_hygiene_guarded(self, debounce_seconds)
 
 
 async def consume_jobs():
@@ -545,6 +560,16 @@ async def consume_jobs():
         timeout=float(_CFG.comfy.timeout_s),
     )
 
+    # Initialize Memory Hygiene with the constructed client and loaded config
+    try:
+        consumer.hygiene = MemoryHygiene(
+            client=consumer.comfy_client,
+            cfg=_CFG.hygiene,
+            logger=logger,
+        )
+    except Exception:
+        consumer.hygiene = None
+
     # Emit concise startup configuration summary (no secrets)
     try:
         logger.info(
@@ -562,4 +587,63 @@ async def consume_jobs():
     except Exception:
         pass
 
+    # Emit concise hygiene summary (effective values)
+    try:
+        h = _CFG.hygiene
+        logger.info(
+            (
+                "ℹ️\u2009 Nilor-Nodes: startup hygiene — enabled=%s, idle_poll_s=%s, "
+                "vram_used_pct_max=%s, ram_used_pct_max=%s, vram_min_free_mb=%s, ram_min_free_mb=%s, "
+                "policy=%s, max_retries=%s, cooldown_s=%s, sleep_between_s=%s, max_cycle_s=%s"
+            ),
+            str(h.enabled),
+            str(h.idle_poll_seconds),
+            str(h.vram_usage_pct_max),
+            str(h.ram_usage_pct_max),
+            str(h.vram_min_free_mb),
+            str(h.ram_min_free_mb),
+            h.action_policy,
+            str(h.max_retries),
+            str(h.cooldown_seconds),
+            str(h.sleep_between_attempts_seconds),
+            str(h.max_cycle_duration_seconds),
+        )
+    except Exception:
+        pass
+
     await consumer.consume_loop()
+
+
+async def _sleep_seconds(seconds: int) -> None:
+    try:
+        await asyncio.sleep(max(0, int(seconds)))
+    except Exception:
+        pass
+
+
+async def _maybe_bool(value) -> bool:
+    try:
+        return bool(value)
+    except Exception:
+        return False
+
+
+async def _run_hygiene_guarded(
+    self_ref: "WorkerConsumer", debounce_seconds: int
+) -> None:
+    # No-op if not available
+    if not getattr(self_ref, "hygiene", None):
+        return
+    # Optional debounce
+    if debounce_seconds > 0:
+        await _sleep_seconds(debounce_seconds)
+    # Set maintenance busy gate
+    if self_ref.is_busy:
+        return
+    self_ref.is_busy = True
+    try:
+        await self_ref.hygiene.check_and_remediate()
+    except Exception:
+        pass
+    finally:
+        self_ref.is_busy = False

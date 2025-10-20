@@ -105,7 +105,7 @@ class MediaStreamInput:
             else:
                 # Should not happen if UI choices are respected
                 raise ValueError(
-                    f"[🛑] Nilor-Nodes (MediaStreamInput): Unsupported format '{format}' for single media download."
+                    f"🛑\u2009 Nilor-Nodes (MediaStreamInput): Unsupported format '{format}' for single media download."
                 )
 
         except requests.RequestException as e:
@@ -169,7 +169,7 @@ class MediaStreamInput:
 
         if not frames:
             raise ValueError(
-                "[🛑] Nilor-Nodes (MediaStreamInput): No frames could be read from the video."
+                "🛑\u2009 Nilor-Nodes (MediaStreamInput): No frames could be read from the video."
             )
 
         # Stack frames into a single tensor (batch of images)
@@ -258,7 +258,7 @@ class MediaStreamOutput:
     ):
         if not content_id:
             raise ValueError(
-                "[🛑] Nilor-Nodes (MediaStreamOutput): content_id is a required input for MediaStreamOutput."
+                "🛑\u2009 Nilor-Nodes (MediaStreamOutput): content_id is a required input for MediaStreamOutput."
             )
 
         # The `output_object_keys` is received as a string representation of a dictionary.

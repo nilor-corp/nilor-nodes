@@ -48,12 +48,14 @@ class SystemStats:
     present, RAM-related metrics may also appear (e.g., `ram_total`, `ram_free`).
 
     Attributes:
+        vram_total: Total VRAM (bytes) when reported.
         vram_free: Free VRAM reported by the backend, if available.
         torch_vram_free: Free VRAM according to torch, if available.
         ram_total: Total system RAM (bytes) when reported.
         ram_free: Free system RAM (bytes) when reported.
     """
 
+    vram_total: Optional[float] = None
     vram_free: Optional[float] = None
     torch_vram_free: Optional[float] = None
     ram_total: Optional[float] = None
@@ -134,6 +136,12 @@ class ComfyUIClientProtocol(Protocol):
         `ComfyUIClientError` subclasses on failure; returns `None` on success.
         """
 
+    async def supports_hygiene(self) -> bool:
+        """Return True if both `/system_stats` and `/free` are supported.
+
+        Performs a one-time capability probe; caches results for the session.
+        """
+
 
 class ComfyUILocalClient(ComfyUIClientProtocol):
     """Local HTTP/WebSocket client for a running ComfyUI instance.
@@ -173,6 +181,10 @@ class ComfyUILocalClient(ComfyUIClientProtocol):
         # WebSocket reconnect policy (commit 4)
         self._ws_max_reconnect_attempts: int = 5
         self._ws_max_total_backoff_seconds: float = 30.0
+        # Capability probe cache (None = unknown, True/False = probed)
+        self._supports_system_stats: Optional[bool] = None
+        self._supports_free: Optional[bool] = None
+        self._capability_warning_emitted: bool = False
 
     # Lifecycle methods may be implemented later; for now they act as no-ops.
     async def __aenter__(self) -> "ComfyUILocalClient":
@@ -251,24 +263,67 @@ class ComfyUILocalClient(ComfyUIClientProtocol):
         except _MappedConnError as e:
             raise e.to_public_error(route=route, method=method)
 
-        # Parse known fields, tolerate missing/unknown
-        vram_free = (
-            _coerce_optional_float(data.get("vram_free"))
-            if isinstance(data, dict)
-            else None
-        )
-        torch_vram_free = (
-            _coerce_optional_float(data.get("torch_vram_free"))
-            if isinstance(data, dict)
-            else None
-        )
-        ram_total = _coerce_optional_float(
-            (data.get("ram_total")) if isinstance(data, dict) else None
-        )
-        ram_free = _coerce_optional_float(
-            (data.get("ram_free")) if isinstance(data, dict) else None
-        )
+        # Parse known fields, tolerate missing/unknown; try alternate shapes; fallback to torch
+        vram_total = None
+        vram_free = None
+        torch_vram_free = None
+        ram_total = None
+        ram_free = None
+
+        if isinstance(data, dict):
+            vram_total = _coerce_optional_float(data.get("vram_total"))
+            vram_free = _coerce_optional_float(data.get("vram_free"))
+            torch_vram_free = _coerce_optional_float(data.get("torch_vram_free"))
+            ram_total = _coerce_optional_float(data.get("ram_total"))
+            ram_free = _coerce_optional_float(data.get("ram_free"))
+
+            # Common alternates
+            if vram_total is None:
+                vram_total = _coerce_optional_float(data.get("total_vram"))
+            if vram_free is None:
+                vram_free = _coerce_optional_float(data.get("free_vram"))
+
+            vram_obj = data.get("vram") if isinstance(data.get("vram"), dict) else None
+            if vram_obj:
+                if vram_total is None:
+                    vram_total = _coerce_optional_float(vram_obj.get("total"))
+                if vram_free is None:
+                    vram_free = _coerce_optional_float(vram_obj.get("free"))
+
+            ram_obj = data.get("ram") if isinstance(data.get("ram"), dict) else None
+            if ram_obj:
+                if ram_total is None:
+                    ram_total = _coerce_optional_float(ram_obj.get("total"))
+                if ram_free is None:
+                    ram_free = _coerce_optional_float(ram_obj.get("free"))
+
+            # devices[0] fallback (common in mock/alt servers)
+            devices = (
+                data.get("devices") if isinstance(data.get("devices"), list) else None
+            )
+            if devices and len(devices) > 0 and isinstance(devices[0], dict):
+                dev0 = devices[0]
+                if vram_total is None:
+                    vram_total = _coerce_optional_float(dev0.get("vram_total"))
+                if vram_free is None:
+                    vram_free = _coerce_optional_float(dev0.get("vram_free"))
+        # Note: we rely solely on server-reported values; no local torch fallback
+
+        # Optional debug logging of reported stats
+        if self._logger:
+            try:
+                self._logger.debug(
+                    "ℹ️\u2009 Nilor-Nodes (comfyui_client): /system_stats: vram_total=%s vram_free=%s torch_vram_free=%s ram_total=%s ram_free=%s",
+                    vram_total,
+                    vram_free,
+                    torch_vram_free,
+                    ram_total,
+                    ram_free,
+                )
+            except Exception:
+                pass
         return SystemStats(
+            vram_total=vram_total,
             vram_free=vram_free,
             torch_vram_free=torch_vram_free,
             ram_total=ram_total,
@@ -326,7 +381,7 @@ class ComfyUILocalClient(ComfyUIClientProtocol):
                     if self._logger:
                         try:
                             self._logger.debug(
-                                f"ComfyUI client: connected websocket {url}"
+                                f"✅ Nilor-Nodes (comfyui_client): connected to websocket {url}"
                             )
                         except Exception:
                             pass
@@ -451,6 +506,67 @@ class ComfyUILocalClient(ComfyUIClientProtocol):
         except _MappedConnError as e:
             raise e.to_public_error(route=route, method=method)
 
+    async def supports_hygiene(self) -> bool:  # type: ignore[override]
+        # If both probed, return cached decision
+        if self._supports_system_stats is not None and self._supports_free is not None:
+            return bool(self._supports_system_stats and self._supports_free)
+
+        await self._probe_capabilities_once()
+        supported = bool(
+            (self._supports_system_stats is True) and (self._supports_free is True)
+        )
+        if not supported and not self._capability_warning_emitted and self._logger:
+            try:
+                self._logger.warning(
+                    "⚠️\u2009 Nilor-Nodes (comfyui_client): hygiene disabled — missing /system_stats or /free support"
+                )
+            except Exception:
+                pass
+            self._capability_warning_emitted = True
+        return supported
+
+    async def _probe_capabilities_once(self) -> None:
+        """Probe `/system_stats` and `/free` capabilities once and cache results.
+
+        Only marks capabilities as False on definitive 404/405 responses. Transient
+        failures leave the capability as None so a future call may retry.
+        """
+        short_timeout = min(self._timeout, 3.0)
+
+        # Probe /system_stats support
+        if self._supports_system_stats is None:
+            route = "/system_stats"
+            url = self._join_http(route)
+            try:
+                await self._http_request_json(
+                    "GET",
+                    url,
+                    json_payload=None,
+                    timeout_s=short_timeout,
+                    retry_idempotent=False,
+                )
+                self._supports_system_stats = True
+            except ComfyUIClientError as e:
+                if getattr(e, "status", None) in (404, 405):
+                    self._supports_system_stats = False
+
+        # Probe /free support (no-op body)
+        if self._supports_free is None:
+            route = "/free"
+            url = self._join_http(route)
+            try:
+                await self._http_request_json(
+                    "POST",
+                    url,
+                    json_payload={"free_memory": False, "unload_models": False},
+                    timeout_s=short_timeout,
+                    retry_idempotent=False,
+                )
+                self._supports_free = True
+            except ComfyUIClientError as e:
+                if getattr(e, "status", None) in (404, 405):
+                    self._supports_free = False
+
 
 # Runtime dependency; imported here to avoid issues if module is scanned without execution
 import aiohttp  # type: ignore
@@ -491,7 +607,7 @@ class _MappedHttpError(Exception):
 
     def to_public_error(self, *, route: str, method: str) -> ComfyUIClientError:
         return ComfyUIClientError(
-            f"HTTP error while calling {method} {route}",
+            f"🛑\u2009 Nilor-Nodes (comfyui_client): HTTP error while calling {method} {route}",
             route=route,
             method=method,
             status=self.status,
@@ -506,7 +622,7 @@ class _MappedConnError(Exception):
 
     def to_public_error(self, *, route: str, method: str) -> ComfyUIClientError:
         return ComfyUIClientError(
-            f"Connection error while calling {method} {route}",
+            f"🛑\u2009 Nilor-Nodes (comfyui_client): Connection error while calling {method} {route}",
             route=route,
             method=method,
             code=self.code,
@@ -567,7 +683,7 @@ def _finalize_attempts(
 ) -> BaseException:
     if isinstance(last_exc, asyncio.TimeoutError):
         return ComfyUIClientTimeout(
-            f"Timeout while calling {method} {url}",
+            f"🛑\u2009 Nilor-Nodes (comfyui_client): Timeout while calling {method} {url}",
             route=_route_from_url(url),
             method=method,
             code="timeout",
@@ -772,7 +888,7 @@ def _ensure_scheme(base: str, allowed: Tuple[str, ...]) -> None:
     if not parsed.scheme or parsed.scheme.lower() not in allowed:
         allowed_str = ", ".join(allowed)
         raise ValueError(
-            f"Base URL must start with one of [{allowed_str}]; got: {base!r}"
+            f"🛑\u2009 Nilor-Nodes (comfyui_client): Base URL must start with one of [{allowed_str}]; got: {base!r}"
         )
 
 

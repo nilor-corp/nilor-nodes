@@ -29,6 +29,24 @@
   NILOR_COMFY_WS_MAX_RECONNECT_ATTEMPTS: 5,
   NILOR_COMFY_WS_MAX_TOTAL_BACKOFF_SECONDS: 30.0,
 
+  // ---- Memory Hygiene (Guardian) defaults ----
+  // Enable/disable hygiene between jobs
+  NILOR_MEMORY_HYGIENE_ENABLED: true,
+  // How often to check when idle (seconds)
+  NILOR_MEMORY_HYGIENE_IDLE_POLL_SECONDS: 5,
+  // Thresholds (either percent usage or absolute free MB can trigger)
+  NILOR_MEMORY_HYGIENE_VRAM_USAGE_PCT_MAX: 88,
+  NILOR_MEMORY_HYGIENE_RAM_USAGE_PCT_MAX: 90,
+  NILOR_MEMORY_HYGIENE_VRAM_MIN_FREE_MB: 2048,
+  NILOR_MEMORY_HYGIENE_RAM_MIN_FREE_MB: 4096,
+  // Action policy: free|unload|both|auto (auto: stage free then unload once if needed)
+  NILOR_MEMORY_HYGIENE_ACTION_POLICY: "auto",
+  // Retry/backoff/cycle caps
+  NILOR_MEMORY_HYGIENE_MAX_RETRIES: 2,
+  NILOR_MEMORY_HYGIENE_COOLDOWN_SECONDS: 60,
+  NILOR_MEMORY_HYGIENE_SLEEP_BETWEEN_ATTEMPTS_SECONDS: 4,
+  NILOR_MEMORY_HYGIENE_MAX_CYCLE_DURATION_SECONDS: 15,
+
   // ---- Worker / Queue settings ----
   // ElasticMQ/SQS endpoint URL (used by consumer and status updates)
   NILOR_SQS_ENDPOINT_URL: "http://localhost:9324",
