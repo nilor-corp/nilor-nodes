@@ -15,8 +15,9 @@ def numpy2pil(image: np.ndarray, mode=None):
 
 
 ## Helper function equivalent to Mikey's pil2tensor
-    #def pil2tensor(self, image):
-    #    return torch.from_numpy(np.array(image).astype(np.float32) / 255.0).unsqueeze(0)
+# def pil2tensor(self, image):
+#    return torch.from_numpy(np.array(image).astype(np.float32) / 255.0).unsqueeze(0)
+
 
 def pil2tensor(image: Image.Image):
     return torch.from_numpy(pil2numpy(image)).unsqueeze(0)

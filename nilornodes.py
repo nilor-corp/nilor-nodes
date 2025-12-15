@@ -16,7 +16,24 @@ import torch
 import builtins
 from pathlib import Path
 import cv2
+import warnings
 from .utils import pil2tensor, tensor2pil
+from .logger import logger
+from comfy.utils import common_upscale
+from comfy import model_management
+import sys
+from os.path import dirname, join
+
+# Attempt to import ImagePadKJ from comfyui-kjnodes if available
+_kj_nodes_path = join(dirname(__file__), "..", "comfyui-kjnodes", "nodes")
+if _kj_nodes_path not in sys.path:
+    sys.path.append(_kj_nodes_path)
+try:
+    from image_nodes import ImagePadKJ  # type: ignore
+except Exception as _e:
+    logger.warning(
+        f"⚠️\u2009 Nilor-Nodes (nilornodes): Could not import ImagePadKJ from comfyui-kjnodes ({_kj_nodes_path}): {_e}"
+    )
 
 BIGMIN = -(2**53 - 1)
 BIGMAX = 2**53 - 1
@@ -166,7 +183,9 @@ class NilorRemapFloatList:
     ):
         # Avoid division by zero
         if max_input - min_input == 0:
-            raise ValueError("max_input and min_input cannot be the same value.")
+            raise ValueError(
+                "🛑\u2009 Nilor-Nodes (RemapFloatList): max_input and min_input cannot be the same value."
+            )
 
         scale = (max_output - min_output) / (max_input - min_input)
         return ([min_output + (x - min_input) * scale for x in list_of_floats],)
@@ -221,7 +240,9 @@ class NilorInverseMapFloatList:
 
     def inverse_map_float_list(self, list_of_floats):
         if not list_of_floats:
-            raise ValueError("The input list_of_floats cannot be empty.")
+            raise ValueError(
+                "🛑\u2009 Nilor-Nodes (InverseMapFloatList): The input list_of_floats cannot be empty."
+            )
 
         min_input = min(list_of_floats)
         max_input = max(list_of_floats)
@@ -317,7 +338,9 @@ class NilorCountImagesInDirectory:
 
     def count_images_in_directory(self, directory):
         if not os.path.isdir(directory):
-            raise FileNotFoundError(f"Directory '{directory} cannot be found.")
+            raise FileNotFoundError(
+                f"🛑\u2009 Nilor-Nodes (NilorCountImagesInDirectory): Directory '{directory}' cannot be found."
+            )
 
         list_dir = []
         list_dir = os.listdir(directory)
@@ -365,7 +388,9 @@ class NilorSelectIndexFromList:
 
         # Ensure the index is within bounds
         if index < 0 or index >= len(actual_list):
-            raise ValueError("Index is outside the bounds of the array.")
+            raise ValueError(
+                "🛑\u2009 Nilor-Nodes (SelectIndexFromList): Index is outside the bounds of the array."
+            )
 
         # Returns the value at the given index
         return (actual_list[index],)
@@ -403,7 +428,9 @@ class NilorSaveEXRArbitrary:
         self, channels=None, filename_prefix="output", prompt=None, extra_pnginfo=None
     ):
 
-        print("Running save_exr_arbitrary")
+        logger.info(
+            "ℹ️\u2009 Nilor-Nodes (SaveEXRArbitrary): Running save_exr_arbitrary"
+        )
         # print(f"channels: {channels}")
         # print(f"filename_prefix: {filename_prefix}")
 
@@ -415,7 +442,9 @@ class NilorSaveEXRArbitrary:
         try:
             actual_channels[0]
         except TypeError:
-            print("actual_channels is not subscriptable")
+            logger.error(
+                "🛑\u2009 Nilor-Nodes (SaveEXRArbitrary): actual_channels is not subscriptable"
+            )
             return
 
         # File path handling
@@ -452,7 +481,9 @@ class NilorSaveEXRArbitrary:
             height, width = image_channels[0].shape[-2:]
             for tensor in image_channels:
                 if tensor.shape[-2:] != (height, width):
-                    raise ValueError("All input tensors must have the same dimensions")
+                    raise ValueError(
+                        "🛑\u2009 Nilor-Nodes (SaveEXRArbitrary): All input tensors must have the same dimensions"
+                    )
 
             # Channel naming
             default_names = ["R", "G", "B", "A"] + [
@@ -502,9 +533,13 @@ class NilorSaveEXRArbitrary:
             exr_file.writePixels(channel_data)
             exr_file.close()
 
-            print(f"EXR file saved successfully to {writepath}")
+            logger.info(
+                f"✅\u2009 Nilor-Nodes (SaveEXRArbitrary): EXR file saved successfully to {writepath}"
+            )
         except Exception as e:
-            print(f"Failed to write EXR file: {e}")
+            logger.error(
+                f"🛑\u2009 Nilor-Nodes (SaveEXRArbitrary): Failed to write EXR file: {e}"
+            )
 
 
 class NilorSaveVideoToHFDataset:
@@ -622,12 +657,14 @@ class NilorShuffleImageBatch:
 
     def _check_image_dimensions(self, images):
         if images.shape[0] == 0:
-            raise ValueError("Input images tensor is empty.")
+            raise ValueError(
+                "🛑\u2009 Nilor-Nodes (ShuffleImageBatch): Input images tensor is empty."
+            )
 
         # All images in the batch should have the same dimensions
         if len(images.shape) != 4:
             raise ValueError(
-                f"Expected 4D tensor (batch, channels, height, width), got shape {images.shape}"
+                f"🛑\u2009 Nilor-Nodes (ShuffleImageBatch): Expected 4D tensor (batch, channels, height, width), got shape {images.shape}"
             )
 
     def shuffle_image_batch(self, images: torch.Tensor, seed):
@@ -667,12 +704,14 @@ class NilorRepeatTrimImageBatch:
 
     def _check_image_dimensions(self, images):
         if images.shape[0] == 0:
-            raise ValueError("Input images tensor is empty.")
+            raise ValueError(
+                "🛑\u2009 Nilor-Nodes (RepeatTrimImageBatch): Input images tensor is empty."
+            )
 
         # All images in the batch should have the same dimensions
         if len(images.shape) != 4:
             raise ValueError(
-                f"Expected 4D tensor (batch, channels, height, width), got shape {images.shape}"
+                f"🛑\u2009 Nilor-Nodes (RepeatTrimImageBatch): Expected 4D tensor (batch, channels, height, width), got shape {images.shape}"
             )
 
     def repeat_trim_image_batch(self, images: torch.Tensor, count):
@@ -710,12 +749,14 @@ class NilorRepeatShuffleTrimImageBatch:
 
     def _check_image_dimensions(self, images):
         if images.shape[0] == 0:
-            raise ValueError("Input images tensor is empty.")
+            raise ValueError(
+                "🛑\u2009 Nilor-Nodes (RepeatShuffleTrimImageBatch): Input images tensor is empty."
+            )
 
         # All images in the batch should have the same dimensions
         if len(images.shape) != 4:
             raise ValueError(
-                f"Expected 4D tensor (batch, channels, height, width), got shape {images.shape}"
+                f"🛑\u2009 Nilor-Nodes (RepeatShuffleTrimImageBatch): Expected 4D tensor (batch, channels, height, width), got shape {images.shape}"
             )
 
     def repeat_shuffle_trim_image_batch(self, images: torch.Tensor, seed, count):
@@ -781,12 +822,16 @@ class NilorOutputFilenameString:
 
         if unique_id is not None and extra_pnginfo is not None:
             if not isinstance(extra_pnginfo, list):
-                print("Error: extra_pnginfo is not a list")
+                logger.error(
+                    "🛑\u2009 Nilor-Nodes (OutputFilenameString): extra_pnginfo is not a list"
+                )
             elif (
                 not isinstance(extra_pnginfo[0], dict)
                 or "workflow" not in extra_pnginfo[0]
             ):
-                print("Error: extra_pnginfo[0] is not a dict or missing 'workflow' key")
+                logger.error(
+                    "🛑\u2009 Nilor-Nodes (OutputFilenameString): extra_pnginfo[0] is not a dict or missing 'workflow' key"
+                )
             else:
                 workflow = extra_pnginfo[0]["workflow"]
                 node = next(
@@ -837,7 +882,206 @@ class NilorNFractionsOfInt:
         elif type == "start + end":
             return ([i * numerator // (denominator - 1) for i in range(denominator)],)
         else:
-            raise ValueError(f"Unknown type: {type}")
+            raise ValueError(
+                f"🛑\u2009 Nilor-Nodes (NilorNFractionsOfInt): Unknown type: {type}"
+            )
+
+
+class NilorWanTileResolution:
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "input_width": (
+                    "INT",
+                    {"default": 1920, "min": 16, "max": BIGMAX, "step": 1},
+                ),
+                "input_height": (
+                    "INT",
+                    {"default": 1080, "min": 16, "max": BIGMAX, "step": 1},
+                ),
+                "target_width": (
+                    "INT",
+                    {"default": 3840, "min": 16, "max": BIGMAX, "step": 1},
+                ),
+                "target_height": (
+                    "INT",
+                    {"default": 2160, "min": 16, "max": BIGMAX, "step": 1},
+                ),
+                "size_preference": (
+                    ["largest", "smallest"],
+                    {"default": "largest"},
+                ),
+            }
+        }
+
+    RETURN_TYPES = ("INT", "INT")
+    RETURN_NAMES = ("tile_width", "tile_height")
+
+    FUNCTION = "compute_tile_resolution"
+    CATEGORY = category + subcategories["utilities"]
+
+    MIN_TILE_DIM = 384
+    MAX_TILE_DIM = 1794
+    MIN_TILE_AREA = 384 * 384
+    MAX_TILE_AREA = 1024 * 1024
+
+    @staticmethod
+    def _clamp(value, minimum, maximum):
+        return max(minimum, min(value, maximum))
+
+    def compute_tile_resolution(
+        self,
+        input_width,
+        input_height,
+        target_width,
+        target_height,
+        size_preference="largest",
+    ):
+        """
+        Compute (Wt, Ht) tile size (multiples of 16) within
+        [MIN_TILE_DIM, MAX_TILE_DIM] while keeping area between
+        [MIN_TILE_AREA, MAX_TILE_AREA]. Emphasise aspect-ratio fidelity to
+        Wa/Ha while staying within the allowed range.
+
+        Among options with comparable aspect error, prefer tiles that do
+        not hit clamped bounds, then maximise area and width (or minimise both if
+        size_preference == "smallest").
+
+        Assumes Wa, Ha are multiples of 16.
+        """
+
+        dims = {
+            "input_width": input_width,
+            "input_height": input_height,
+            "target_width": target_width,
+            "target_height": target_height,
+        }
+
+        for name, value in dims.items():
+            if value <= 0:
+                raise ValueError(
+                    f"🛑\u2009 Nilor-Nodes (NilorWanTileResolution): {name} must be a positive integer."
+                )
+
+        if input_width % 16 != 0 or input_height % 16 != 0:
+            raise ValueError(
+                "🛑\u2009 Nilor-Nodes (NilorWanTileResolution): input_width and input_height must be multiples of 16."
+            )
+
+        if target_width < self.MIN_TILE_DIM or target_height < self.MIN_TILE_DIM:
+            raise ValueError(
+                "🛑\u2009 Nilor-Nodes (NilorWanTileResolution): target_width and target_height must be at least the minimum tile size."
+            )
+
+        min_blocks = self.MIN_TILE_DIM // 16
+        max_blocks = self.MAX_TILE_DIM // 16
+
+        max_width_blocks = min(max_blocks, target_width // 16)
+        max_height_blocks = min(max_blocks, target_height // 16)
+
+        if max_width_blocks < min_blocks or max_height_blocks < min_blocks:
+            raise ValueError(
+                "🛑\u2009 Nilor-Nodes (NilorWanTileResolution): Target dimensions do not allow a tile within the supported range."
+            )
+
+        aspect_ratio = input_width / input_height
+
+        best_score = None
+        best_dimensions = None
+
+        for height_blocks in range(min_blocks, max_height_blocks + 1):
+            width_blocks = round(aspect_ratio * height_blocks)
+            width_blocks = self._clamp(width_blocks, min_blocks, max_width_blocks)
+
+            width_px = width_blocks * 16
+            height_px = height_blocks * 16
+
+            area = width_px * height_px
+            if area < self.MIN_TILE_AREA or area > self.MAX_TILE_AREA:
+                # Skip tiles that are too small or too large
+                continue
+            aspect_error = abs((width_blocks / height_blocks) - aspect_ratio)
+
+            width_hits_bound = int(width_blocks in (min_blocks, max_width_blocks))
+            height_hits_bound = int(height_blocks in (min_blocks, max_height_blocks))
+
+            # Penalise tiles that hit the clamped bounds
+            bound_penalty = width_hits_bound + height_hits_bound
+
+            # Score tiles based on size preference
+            if size_preference == "smallest":
+                area_score = -area
+                width_score = -width_px
+            else:
+                area_score = area
+                width_score = width_px
+
+            # Combine scores
+            candidate = (-aspect_error, -bound_penalty, area_score, width_score)
+
+            if best_score is None or candidate > best_score:
+                # Update best score and dimensions if this candidate is better
+                best_score = candidate
+                best_dimensions = (width_px, height_px)
+
+        if best_dimensions is None:
+            # If no suitable tile resolution was found, raise an error
+            raise RuntimeError(
+                "🛑\u2009 Nilor-Nodes (NilorWanTileResolution): Failed to determine a suitable tile resolution."
+            )
+
+        return best_dimensions
+
+
+class NilorWanFrameTrim:
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "images": ("IMAGE",),
+            },
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("images",)
+    FUNCTION = "trim_to_wan_count"
+    CATEGORY = category + subcategories["utilities"]
+
+    def _validate_images(self, images):
+        if not isinstance(images, torch.Tensor):
+            raise TypeError(
+                "🛑\u2009 Nilor-Nodes (WanFrameTrim): images must be a torch.Tensor."
+            )
+        if images.dim() != 4:
+            raise ValueError(
+                f"🛑\u2009 Nilor-Nodes (WanFrameTrim): Expected 4D tensor (batch, height, width, channels), got shape {tuple(images.shape)}"
+            )
+        if images.shape[0] == 0:
+            raise ValueError(
+                "🛑\u2009 Nilor-Nodes (WanFrameTrim): Input images tensor is empty."
+            )
+
+    def trim_to_wan_count(self, images: torch.Tensor):
+        self._validate_images(images)
+
+        batch_count = images.shape[0]
+        # Find the largest m <= batch_count such that m ≡ 1 (mod 4)
+        wan_count = batch_count - ((batch_count - 1) % 4)
+
+        if wan_count <= 0:
+            raise ValueError(
+                "🛑\u2009 Nilor-Nodes (WanFrameTrim): Unable to compute a valid 4N+1 frame count from input."
+            )
+
+        trimmed = images[:wan_count]
+        return (trimmed,)
 
 
 class NilorCategorizeString:
@@ -959,7 +1203,9 @@ class NilorRandomString:
             if item.strip()
         ]
         if not options:
-            raise ValueError("No valid choices provided.")
+            raise ValueError(
+                "🛑\u2009 Nilor-Nodes (NilorRandomString): No valid choices provided."
+            )
 
         # Limit to the first 'max_options' entries if there are more options
         if len(options) > max_options:
@@ -1001,7 +1247,9 @@ class NilorLoadImageByIndex:
 
     def load_image_by_index(self, image_directory, seed, sort_mode, reverse_sort):
         if not os.path.exists(image_directory):
-            raise FileNotFoundError(f"Image directory {image_directory} does not exist")
+            raise FileNotFoundError(
+                f"🛑\u2009 Nilor-Nodes (NilorLoadImageByIndex): Image directory {image_directory} does not exist"
+            )
 
         # Get list of image files
         files = []
@@ -1013,7 +1261,9 @@ class NilorLoadImageByIndex:
                 files.append(file_path)
 
         if not files:
-            raise ValueError(f"No image files found in {image_directory}")
+            raise ValueError(
+                f"🛑\u2009 Nilor-Nodes (NilorLoadImageByIndex): No image files found in {image_directory}"
+            )
 
         # Sort files based on selected mode
         if sort_mode == "filename":
@@ -1063,7 +1313,9 @@ class NilorExtractFilenameFromPath:
     def extract_filename(self, filepath):
         # Ensure the input is a valid path
         if not filepath:
-            raise ValueError("Filepath cannot be empty.")
+            raise ValueError(
+                "🛑\u2009 Nilor-Nodes (ExtractFilenameFromPath): Filepath cannot be empty."
+            )
 
         path = Path(filepath)
 
@@ -1098,14 +1350,18 @@ class NilorBlurAnalysis:
         """
         # Ensure images is a 4D tensor.
         if images.dim() != 4:
-            raise ValueError("Input images must be a 4D tensor (batch, channels/height, height/width, width/channels)")
+            raise ValueError(
+                "🛑\u2009 Nilor-Nodes (BlurAnalysis): Input images must be a 4D tensor (batch, channels/height, height/width, width/channels)"
+            )
 
         # Detect if using NCHW or NHWC.
         if images.shape[1] not in (1, 3):
             if images.shape[-1] in (1, 3):
                 images = images.permute(0, 3, 1, 2)
             else:
-                raise ValueError("Cannot determine image format (expected channel to be 1 or 3).")
+                raise ValueError(
+                    "🛑\u2009 Nilor-Nodes (BlurAnalysis): Cannot determine image format (expected channel to be 1 or 3)."
+                )
 
         output_images = []
         batch_size = images.shape[0]
@@ -1116,9 +1372,7 @@ class NilorBlurAnalysis:
 
             # Convert to grayscale.
             if img_np.shape[0] >= 3:
-                gray = (0.299 * img_np[0] +
-                        0.587 * img_np[1] +
-                        0.114 * img_np[2])
+                gray = 0.299 * img_np[0] + 0.587 * img_np[1] + 0.114 * img_np[2]
             else:
                 gray = np.squeeze(img_np, axis=0)  # shape: (H, W)
 
@@ -1146,7 +1400,9 @@ class NilorBlurAnalysis:
             # Convert the single channel output to a 3-channel image.
             # This ensures downstream nodes (like MaskFromRGBCMYBW) that index into channels work properly.
             if out_img.ndim == 2:
-                out_img = np.stack([out_img, out_img, out_img], axis=-1)  # shape becomes (H, W, 3)
+                out_img = np.stack(
+                    [out_img, out_img, out_img], axis=-1
+                )  # shape becomes (H, W, 3)
 
             # Convert from PIL image (or numpy array) to tensor.
             # pil2tensor should create a tensor in a format that downstream nodes expect.
@@ -1156,6 +1412,7 @@ class NilorBlurAnalysis:
         # Fix 2: Use torch.stack to preserve the batch dimension.
         # If each output has shape, say, (H, W, 3), stacking them gives a tensor of shape (B, H, W, 3).
         return (torch.cat(output_images, dim=0),)
+
 
 class NilorToSparseIndexMethod:
     def __init__(self):
@@ -1179,8 +1436,313 @@ class NilorToSparseIndexMethod:
 
     def convert_to_sparse_index_method(self, ints):
         indexes_str = ",".join(map(str, ints))
-        
+
         return (indexes_str,)
+
+
+class NilorImageResizeV2:
+    upscale_methods = ["nearest-exact", "bilinear", "area", "bicubic", "lanczos"]
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "image": ("IMAGE",),
+                "width": ("INT", {"default": 512, "min": 0, "max": BIGMAX, "step": 1}),
+                "height": ("INT", {"default": 512, "min": 0, "max": BIGMAX, "step": 1}),
+                "upscale_method": (s.upscale_methods,),
+                "keep_proportion": (
+                    [
+                        "stretch",
+                        "resize",
+                        "pad",
+                        "pad_edge",
+                        "pad_edge_pixel",
+                        "crop",
+                        "pillarbox_blur",
+                    ],
+                    {"default": False},
+                ),
+                "pad_color": ("STRING", {"default": "0, 0, 0"}),
+                "crop_position": (
+                    ["center", "top", "bottom", "left", "right"],
+                    {"default": "center"},
+                ),
+                "divisible_by": (
+                    "INT",
+                    {"default": 2, "min": 0, "max": 512, "step": 1},
+                ),
+            },
+            "optional": {
+                "mask": ("MASK",),
+                "device": (["cpu", "gpu"],),
+                "per_batch": (
+                    "INT",
+                    {
+                        "default": 16,
+                        "min": 0,
+                        "max": 4096,
+                        "step": 1,
+                        "tooltip": "Process images in sub-batches. 0 disables.",
+                    },
+                ),
+            },
+            "hidden": {"unique_id": "UNIQUE_ID"},
+        }
+
+    RETURN_TYPES = ("IMAGE", "INT", "INT", "MASK")
+    RETURN_NAMES = ("IMAGE", "width", "height", "mask")
+    FUNCTION = "resize"
+    CATEGORY = category + subcategories["utilities"]
+    DESCRIPTION = """
+Resizes images with optional aspect preservation, padding/cropping, and sub-batching to lower peak memory.
+"""
+
+    def resize(
+        self,
+        image,
+        width,
+        height,
+        keep_proportion,
+        upscale_method,
+        divisible_by,
+        pad_color,
+        crop_position,
+        unique_id,
+        device="cpu",
+        mask=None,
+        per_batch=16,
+    ):
+        B, H, W, C = image.shape
+
+        if device == "gpu":
+            if upscale_method == "lanczos":
+                raise Exception(
+                    "🛑\u2009 Nilor-Nodes (NilorImageResizeV2): Lanczos is not supported on the GPU"
+                )
+            device = model_management.get_torch_device()
+        else:
+            device = torch.device("cpu")
+
+        if width == 0:
+            width = W
+        if height == 0:
+            height = H
+
+        pillarbox_blur = keep_proportion == "pillarbox_blur"
+        if (
+            keep_proportion == "resize"
+            or keep_proportion.startswith("pad")
+            or pillarbox_blur
+        ):
+            if width == 0 and height != 0:
+                ratio = height / H
+                new_width = round(W * ratio)
+                new_height = height
+            elif height == 0 and width != 0:
+                ratio = width / W
+                new_width = width
+                new_height = round(H * ratio)
+            elif width != 0 and height != 0:
+                ratio = min(width / W, height / H)
+                new_width = round(W * ratio)
+                new_height = round(H * ratio)
+            else:
+                new_width = width
+                new_height = height
+
+            pad_left = pad_right = pad_top = pad_bottom = 0
+            if keep_proportion.startswith("pad") or pillarbox_blur:
+                if crop_position == "center":
+                    pad_left = (width - new_width) // 2
+                    pad_right = width - new_width - pad_left
+                    pad_top = (height - new_height) // 2
+                    pad_bottom = height - new_height - pad_top
+                elif crop_position == "top":
+                    pad_left = (width - new_width) // 2
+                    pad_right = width - new_width - pad_left
+                    pad_top = 0
+                    pad_bottom = height - new_height
+                elif crop_position == "bottom":
+                    pad_left = (width - new_width) // 2
+                    pad_right = width - new_width - pad_left
+                    pad_top = height - new_height
+                    pad_bottom = 0
+                elif crop_position == "left":
+                    pad_left = 0
+                    pad_right = width - new_width
+                    pad_top = (height - new_height) // 2
+                    pad_bottom = height - new_height - pad_top
+                elif crop_position == "right":
+                    pad_left = width - new_width
+                    pad_right = 0
+                    pad_top = (height - new_height) // 2
+                    pad_bottom = height - new_height - pad_top
+
+            width = new_width
+            height = new_height
+
+        if divisible_by > 1:
+            width = width - (width % divisible_by)
+            height = height - (height % divisible_by)
+
+        if per_batch and B > per_batch:
+            try:
+                bytes_per_elem = image.element_size()
+                est_total_bytes = B * height * width * C * bytes_per_elem
+                est_mb = est_total_bytes / (1024 * 1024)
+                logger.info(
+                    f"ℹ️\u2009 Nilor-Nodes (NilorImageResizeV2) Estimated output ~{est_mb:.2f} MB."
+                )
+            except:
+                pass
+
+        def _process_subbatch(in_image, in_mask):
+            out_image = in_image if in_image.device == device else in_image.to(device)
+            out_mask = (
+                None
+                if in_mask is None
+                else (in_mask if in_mask.device == device else in_mask.to(device))
+            )
+
+            if keep_proportion == "crop":
+                old_height = out_image.shape[-3]
+                old_width = out_image.shape[-2]
+                old_aspect = old_width / old_height
+                new_aspect = width / height
+                if old_aspect > new_aspect:
+                    crop_w = round(old_height * new_aspect)
+                    crop_h = old_height
+                else:
+                    crop_w = old_width
+                    crop_h = round(old_width / new_aspect)
+                if crop_position == "center":
+                    x = (old_width - crop_w) // 2
+                    y = (old_height - crop_h) // 2
+                elif crop_position == "top":
+                    x = (old_width - crop_w) // 2
+                    y = 0
+                elif crop_position == "bottom":
+                    x = (old_width - crop_w) // 2
+                    y = old_height - crop_h
+                elif crop_position == "left":
+                    x = 0
+                    y = (old_height - crop_h) // 2
+                elif crop_position == "right":
+                    x = old_width - crop_w
+                    y = (old_height - crop_h) // 2
+                out_image = out_image.narrow(-2, x, crop_w).narrow(-3, y, crop_h)
+                if out_mask is not None:
+                    out_mask = out_mask.narrow(-1, x, crop_w).narrow(-2, y, crop_h)
+
+            out_image = common_upscale(
+                out_image.movedim(-1, 1), width, height, upscale_method, crop="disabled"
+            ).movedim(1, -1)
+            if out_mask is not None:
+                if upscale_method == "lanczos":
+                    out_mask = common_upscale(
+                        out_mask.unsqueeze(1).repeat(1, 3, 1, 1),
+                        width,
+                        height,
+                        upscale_method,
+                        crop="disabled",
+                    ).movedim(1, -1)[:, :, :, 0]
+                else:
+                    out_mask = common_upscale(
+                        out_mask.unsqueeze(1),
+                        width,
+                        height,
+                        upscale_method,
+                        crop="disabled",
+                    ).squeeze(1)
+
+            if (keep_proportion.startswith("pad") or pillarbox_blur) and (
+                pad_left > 0 or pad_right > 0 or pad_top > 0 or pad_bottom > 0
+            ):
+                padded_width = width + pad_left + pad_right
+                padded_height = height + pad_top + pad_bottom
+                if divisible_by > 1:
+                    width_remainder = padded_width % divisible_by
+                    height_remainder = padded_height % divisible_by
+                    if width_remainder > 0:
+                        extra_width = divisible_by - width_remainder
+                        pad_right += extra_width
+                    if height_remainder > 0:
+                        extra_height = divisible_by - height_remainder
+                        pad_bottom += extra_height
+
+                pad_mode = (
+                    "pillarbox_blur"
+                    if pillarbox_blur
+                    else (
+                        "edge"
+                        if keep_proportion == "pad_edge"
+                        else (
+                            "edge_pixel"
+                            if keep_proportion == "pad_edge_pixel"
+                            else "color"
+                        )
+                    )
+                )
+                out_image, out_mask = ImagePadKJ.pad(
+                    self,
+                    out_image,
+                    pad_left,
+                    pad_right,
+                    pad_top,
+                    pad_bottom,
+                    0,
+                    pad_color,
+                    pad_mode,
+                    mask=out_mask,
+                )
+
+            return out_image, out_mask
+
+        if per_batch is None or per_batch == 0 or B <= per_batch:
+            out_image, out_mask = _process_subbatch(image, mask)
+        else:
+            chunks = []
+            mask_chunks = [] if mask is not None else None
+            total_batches = (B + per_batch - 1) // per_batch
+            current_batch = 0
+            for start_idx in range(0, B, per_batch):
+                current_batch += 1
+                end_idx = min(start_idx + per_batch, B)
+                sub_img = image[start_idx:end_idx]
+                sub_mask = mask[start_idx:end_idx] if mask is not None else None
+                sub_out_img, sub_out_mask = _process_subbatch(sub_img, sub_mask)
+                chunks.append(sub_out_img.cpu())
+                if mask is not None:
+                    mask_chunks.append(
+                        sub_out_mask.cpu() if sub_out_mask is not None else None
+                    )
+                try:
+                    logger.info(
+                        f"ℹ️\u2009 Nilor-Nodes (NilorImageResizeV2) Batch {current_batch}/{total_batches} · images {end_idx}/{B}"
+                    )
+                except:
+                    pass
+            out_image = torch.cat(chunks, dim=0)
+            if mask is not None and any(m is not None for m in mask_chunks):
+                out_mask = torch.cat([m for m in mask_chunks if m is not None], dim=0)
+            else:
+                out_mask = None
+
+        logger.info(f"✅\u2009 Nilor-Nodes (NilorImageResizeV2) All batches complete.")
+
+        return (
+            out_image.cpu(),
+            out_image.shape[2],
+            out_image.shape[1],
+            (
+                out_mask.cpu()
+                if out_mask is not None
+                else torch.zeros(
+                    64, 64, device=torch.device("cpu"), dtype=torch.float32
+                )
+            ),
+        )
 
 
 # Mapping class names to objects for potential export
@@ -1204,19 +1766,22 @@ NODE_CLASS_MAPPINGS = {
     "Nilor n Fractions of Int": NilorNFractionsOfInt,
     "Nilor Categorize String": NilorCategorizeString,
     "Nilor Random String": NilorRandomString,
+    "Nilor Wan Tile Resolution": NilorWanTileResolution,
     "Nilor Extract Filename from Path": NilorExtractFilenameFromPath,
     "Nilor Load Image By Index": NilorLoadImageByIndex,
     "Nilor Blur Analysis": NilorBlurAnalysis,
     "Nilor To Sparse Index Method": NilorToSparseIndexMethod,
+    "Nilor Image Resize v2": NilorImageResizeV2,
+    "Nilor Wan Frame Trim": NilorWanFrameTrim,
 }
 
 # Mapping nodes to human-readable names
 NODE_DISPLAY_NAME_MAPPINGS = {
     "Nilor Interpolated Float List": "👺 Interpolated Float List",
     "Nilor One Minus Float List": "👺 One Minus Float List",
-    "Nilor Remap Float List": "👺 Nilor Remap Float List",
-    "Nilor Remap Float List Auto Input": "👺 Nilor Remap Float List Auto Input",
-    "Nilor Inverse Map Float List": "👺 Nilor Inverse Map Float List",
+    "Nilor Remap Float List": "👺 Remap Float List",
+    "Nilor Remap Float List Auto Input": "👺 Remap Float List Auto Input",
+    "Nilor Inverse Map Float List": "👺 Inverse Map Float List",
     "Nilor Int To List Of Bools": "👺 Int To List Of Bools",
     "Nilor List of Ints": "👺 List of Ints",
     "Nilor Count Images In Directory": "👺 Count Images In Directory",
@@ -1224,15 +1789,18 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "Nilor Save Video To HF Dataset": "👺 Save Video To HF Dataset",
     "Nilor Select Index From List": "👺 Select Index From List",
     "Nilor Save EXR Arbitrary": "👺 Save EXR Arbitrary",
-    "Nilor Shuffle Image Batch": "👺 Nilor Shuffle Image Batch",
-    "Nilor Repeat & Trim Image Batch": "👺 Nilor Repeat & Trim Image Batch",
-    "Nilor Repeat, Shuffle, & Trim Image Batch": "👺 Nilor Repeat, Shuffle, & Trim Image Batch",
-    "Nilor Output Filename String": "👺 Nilor Output Filename String",
-    "Nilor n Fractions of Int": "👺 Nilor n Fractions of Int",
+    "Nilor Shuffle Image Batch": "👺 Shuffle Image Batch",
+    "Nilor Repeat & Trim Image Batch": "👺 Repeat & Trim Image Batch",
+    "Nilor Repeat, Shuffle, & Trim Image Batch": "👺 Repeat, Shuffle, & Trim Image Batch",
+    "Nilor Output Filename String": "👺 Output Filename String",
+    "Nilor n Fractions of Int": "👺 n Fractions of Int",
     "Nilor Categorize String": "👺 Categorize String",
     "Nilor Random String": "👺 Random String",
+    "Nilor Wan Tile Resolution": "👺 Wan Tile Resolution",
     "Nilor Extract Filename from Path": "👺 Extract Filename from Path",
     "Nilor Load Image By Index": "👺 Load Image By Index",
     "Nilor Blur Analysis": "👺 Blur Analysis",
     "Nilor To Sparse Index Method": "👺 To Sparse Index Method",
+    "Nilor Image Resize v2": "👺 Resize Image v2",
+    "Nilor Wan Frame Trim": "👺 Wan Frame Trim",
 }

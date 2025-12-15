@@ -1,0 +1,109 @@
+category = "Nilor Nodes 👺"
+subcategories = {
+    "io": "/IO",
+}
+
+from .controllers import CONTROLLER_HOOK
+
+
+class NilorUserInput_String:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "input_name": (
+                    "STRING",
+                    {"default": "my_string_input", "multiline": False},
+                ),
+                "value": ("STRING", {"default": "", "multiline": True}),
+            }
+        }
+
+    RETURN_TYPES = ("STRING", CONTROLLER_HOOK)
+    RETURN_NAMES = ("string", "_controller_hook")
+    FUNCTION = "get_value"
+    CATEGORY = category + subcategories["io"]
+
+    def get_value(self, input_name, value):
+        return (value, None)
+
+
+class NilorUserInput_Int:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "input_name": (
+                    "STRING",
+                    {"default": "my_int_input", "multiline": False},
+                ),
+                "value": ("INT", {"default": 0}),
+            }
+        }
+
+    RETURN_TYPES = ("INT", CONTROLLER_HOOK)
+    RETURN_NAMES = ("int", "_controller_hook")
+    FUNCTION = "get_value"
+    CATEGORY = category + subcategories["io"]
+
+    def get_value(self, input_name, value):
+        return (value, None)
+
+
+class NilorUserInput_Float:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "input_name": (
+                    "STRING",
+                    {"default": "my_float_input", "multiline": False},
+                ),
+                "value": ("FLOAT", {"default": 0.0, "step": 0.001}),
+            }
+        }
+
+    RETURN_TYPES = ("FLOAT", CONTROLLER_HOOK)
+    RETURN_NAMES = ("float", "_controller_hook")
+    FUNCTION = "get_value"
+    CATEGORY = category + subcategories["io"]
+
+    def get_value(self, input_name, value):
+        return (value, None)
+
+
+class NilorUserInput_Boolean:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "input_name": (
+                    "STRING",
+                    {"default": "my_bool_input", "multiline": False},
+                ),
+                "value": ("BOOLEAN", {"default": False}),
+            }
+        }
+
+    RETURN_TYPES = ("BOOLEAN", CONTROLLER_HOOK)
+    RETURN_NAMES = ("boolean", "_controller_hook")
+    FUNCTION = "get_value"
+    CATEGORY = category + subcategories["io"]
+
+    def get_value(self, input_name, value):
+        return (value, None)
+
+
+NODE_CLASS_MAPPINGS = {
+    "NilorUserInput_String": NilorUserInput_String,
+    "NilorUserInput_Int": NilorUserInput_Int,
+    "NilorUserInput_Float": NilorUserInput_Float,
+    "NilorUserInput_Boolean": NilorUserInput_Boolean,
+}
+
+NODE_DISPLAY_NAME_MAPPINGS = {
+    "NilorUserInput_String": "👺 User Input (String)",
+    "NilorUserInput_Int": "👺 User Input (Int)",
+    "NilorUserInput_Float": "👺 User Input (Float)",
+    "NilorUserInput_Boolean": "👺 User Input (Boolean)",
+}
