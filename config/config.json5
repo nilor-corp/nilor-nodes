@@ -5,9 +5,9 @@
 
   allow_env_override: true,
 
-  // ---- Feature flags ----
   // Log level for nilor-nodes components (DEBUG, INFO, WARNING, ERROR, CRITICAL)
   NILOR_LOG_LEVEL: "INFO",
+  // Enable/disable SQS job consumption from Nilor brain_rnd
   NILOR_SQS_ENABLED: false,
 
   // ---- Comfy API client (consumed by worker_consumer.py) ----
@@ -31,7 +31,7 @@
 
   // ---- Memory Hygiene (Guardian) defaults ----
   // Enable/disable hygiene between jobs
-  NILOR_MEMORY_HYGIENE_ENABLED: true,
+  NILOR_MEMORY_HYGIENE_ENABLED: false,
   // How often to check when idle (seconds)
   NILOR_MEMORY_HYGIENE_IDLE_POLL_SECONDS: 5,
   // Thresholds (either percent usage or absolute free MB can trigger)
