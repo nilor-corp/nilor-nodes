@@ -370,7 +370,6 @@ class ComfyUILocalClient(ComfyUIClientProtocol):
                 async with websockets.connect(
                     url,
                     max_size=None,
-                    read_limit=64 * 1024 * 1024,
                     max_queue=4,
                     ping_interval=20,
                     ping_timeout=20,
