@@ -210,7 +210,7 @@ The `worker_consumer.py` script is a background service that runs on each ComfyU
 
 **Workflow normalization toggle:**
 
--   Set `NILOR_WORKFLOW_OS_NORMALIZATION_ENABLED=false` to disable this behavior (default: enabled).
+-   Set `NILOR_WORKFLOW_OS_NORMALIZATION_ENABLED=false` (via environment or `config/config.json5`) to disable this behavior (default: enabled).
 
 </details>
 
@@ -221,7 +221,7 @@ The sidecar uses a small, typed configuration loader with JSON5 defaults and opt
 - **Precedence**: environment variables > `config/config.json5` (controlled by `allow_env_override: true`).
 - **No hot‑reload**: configuration is loaded once at process start and passed to components.
 - **Paths/keys**: JSON5 at `ComfyUI/custom_nodes/nilor-nodes/config/config.json5` with `NILOR_*` keys (e.g., `NILOR_COMFYUI_API_URL`, `NILOR_SQS_ENDPOINT_URL`). Secrets (AWS secret) must be set via `.env`.
-- **Typed object**: loader returns a `NilorNodesConfig` with `comfy` and `worker` sections.
+- **Typed object**: loader returns a `NilorNodesConfig` with `comfy`, `worker`, and `hygiene` sections.
 
 Pseudocode usage:
 
