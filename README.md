@@ -204,8 +204,13 @@ The `worker_consumer.py` script is a background service that runs on each ComfyU
 **Key Responsibilities:**
 -   Continuously polls the `jobs_to_process` queue for new jobs using long polling.
 -   When a job is received, it extracts the workflow data and submits it to the local ComfyUI server.
+-   Normalizes OS-sensitive path formatting in the ComfyUI `prompt` graph (e.g. converts `Flux1/ae.safetensors` ↔ `Flux1\ae.safetensors`) so workflows authored on Linux/Windows run on the current worker OS.
 -   Deletes the job message from the queue upon successful submission to prevent reprocessing.
 -   If submission fails, the message remains on the queue to be picked up by another worker.
+
+**Workflow normalization toggle:**
+
+-   Set `NILOR_WORKFLOW_OS_NORMALIZATION_ENABLED=false` to disable this behavior (default: enabled).
 
 </details>
 
