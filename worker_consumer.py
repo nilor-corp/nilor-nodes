@@ -20,6 +20,7 @@ from botocore.exceptions import EndpointConnectionError, ClientError
 from .logger import logger
 from .comfyui_client import ComfyUILocalClient, ComfyUIClientError
 from .memory_hygiene import MemoryHygiene
+from .workflow_normalizer import normalize_comfyui_prompt_for_current_os
 from .config.config import load_nilor_nodes_config, NilorNodesConfig
 
 
@@ -428,6 +429,32 @@ class WorkerConsumer:
             )
 
             if isinstance(payload, dict):
+                # Normalize OS-sensitive path formatting inside the ComfyUI prompt graph.
+                # This lets us accept workflows authored on a different OS (e.g. Windows
+                # backslashes) and run them on the current worker OS.
+                enabled_raw = os.getenv(
+                    "NILOR_WORKFLOW_OS_NORMALIZATION_ENABLED", "true"
+                ).strip()
+                enabled = enabled_raw.lower() not in ("0", "false", "no", "off")
+                if enabled and "prompt" in payload:
+                    try:
+                        normalized_prompt, rewritten = (
+                            normalize_comfyui_prompt_for_current_os(payload["prompt"])
+                        )
+                        if rewritten:
+                            payload["prompt"] = normalized_prompt
+                            logger.debug(
+                                "ℹ️\u2009 Nilor-Nodes (worker_consumer): Normalized %s path-like values in ComfyUI prompt for os=%s.",
+                                rewritten,
+                                os.name,
+                            )
+                    except Exception as e:
+                        # Don't fail the job if normalization fails; submit as-is.
+                        logger.warning(
+                            "⚠️\u2009 Nilor-Nodes (worker_consumer): Workflow normalization failed; submitting original prompt. Error: %s",
+                            e,
+                        )
+
                 # Force top-level client_id to this worker's stable ID
                 payload["client_id"] = self.worker_client_id
                 # Ensure extra_data exists and force its client_id too
