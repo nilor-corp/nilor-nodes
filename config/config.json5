@@ -48,6 +48,11 @@
   NILOR_MEMORY_HYGIENE_MAX_CYCLE_DURATION_SECONDS: 15,
 
   // ---- Worker / Queue settings ----
+  // Workflow normalization (applies in worker_consumer before submission)
+  // When enabled, nilor-nodes will normalize OS-specific path formatting inside
+  // incoming workflows (e.g. Windows backslashes vs POSIX slashes).
+  NILOR_WORKFLOW_OS_NORMALIZATION_ENABLED: true,
+
   // ElasticMQ/SQS endpoint URL (used by consumer and status updates)
   NILOR_SQS_ENDPOINT_URL: "http://localhost:9324",
   // Queue to pull new jobs from (polled by worker_consumer)

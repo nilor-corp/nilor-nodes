@@ -79,6 +79,8 @@ class WorkerConfig:
         aws_secret_access_key: Secret access key for the SQS client (must be overridden via environment for real deployments).
         aws_region: AWS region name used by the SQS client.
         worker_client_id: Stable identifier for routing websocket events to this worker.
+        workflow_os_normalization_enabled: When true, normalize OS-specific path formatting
+            inside ComfyUI prompt graphs before submission.
     """
 
     sqs_endpoint_url: str
@@ -90,6 +92,7 @@ class WorkerConfig:
     aws_secret_access_key: str
     aws_region: str
     worker_client_id: str
+    workflow_os_normalization_enabled: bool
 
 
 @dataclass(frozen=True)
@@ -199,6 +202,9 @@ class NilorNodesConfig(BaseConfig):
             ).strip(),
             aws_region=str(config_dict.get("NILOR_AWS_DEFAULT_REGION", "")).strip(),
             worker_client_id=worker_client_id,
+            workflow_os_normalization_enabled=_coerce_bool(
+                config_dict.get("NILOR_WORKFLOW_OS_NORMALIZATION_ENABLED", True)
+            ),
         )
 
         # Memory hygiene
@@ -332,6 +338,10 @@ def _apply_env_overrides(cfg: NilorNodesConfig) -> None:
     )
     worker_region = os.getenv("NILOR_AWS_DEFAULT_REGION", cfg.worker.aws_region)
     worker_client_id = os.getenv("NILOR_WORKER_CLIENT_ID", cfg.worker.worker_client_id)
+    worker_workflow_os_norm = os.getenv(
+        "NILOR_WORKFLOW_OS_NORMALIZATION_ENABLED",
+        cfg.worker.workflow_os_normalization_enabled,
+    )
     cfg.worker = WorkerConfig(
         sqs_endpoint_url=str(worker_sqs_endpoint_url),
         jobs_queue=str(worker_jobs_queue),
@@ -342,6 +352,7 @@ def _apply_env_overrides(cfg: NilorNodesConfig) -> None:
         aws_secret_access_key=str(worker_secret_key),
         aws_region=str(worker_region),
         worker_client_id=str(worker_client_id),
+        workflow_os_normalization_enabled=_coerce_bool(worker_workflow_os_norm),
     )
 
     # Re-validate after overrides

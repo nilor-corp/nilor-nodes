@@ -432,10 +432,7 @@ class WorkerConsumer:
                 # Normalize OS-sensitive path formatting inside the ComfyUI prompt graph.
                 # This lets us accept workflows authored on a different OS (e.g. Windows
                 # backslashes) and run them on the current worker OS.
-                enabled_raw = os.getenv(
-                    "NILOR_WORKFLOW_OS_NORMALIZATION_ENABLED", "true"
-                ).strip()
-                enabled = enabled_raw.lower() not in ("0", "false", "no", "off")
+                enabled = self.cfg.worker.workflow_os_normalization_enabled
                 if enabled and "prompt" in payload:
                     try:
                         normalized_prompt, rewritten = (
