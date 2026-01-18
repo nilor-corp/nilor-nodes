@@ -8,6 +8,7 @@ import imageio.v2 as imageio
 import mimetypes
 import boto3
 import json
+
 import tempfile
 import os
 from .logger import logger
@@ -15,7 +16,6 @@ from .config.config import load_nilor_nodes_config
 
 # Load shared configuration once
 _CFG = load_nilor_nodes_config()
-
 
 # --- Node Categories ---
 category = "Nilor Nodes 👺"
@@ -56,10 +56,10 @@ class MediaStreamInput:
     CATEGORY = category + subcategories["streaming"]
 
     def download(
-        self,
-        presigned_download_url: str,
-        format: str,
-        input_name: str = "default_input",
+            self,
+            presigned_download_url: str,
+            format: str,
+            input_name: str = "default_input",
     ):
         logger.info(
             f"ℹ️\u2009 Nilor-Nodes: MediaStreamInput: Downloading from {presigned_download_url} for input '{input_name}' with format '{format}'"
@@ -100,7 +100,8 @@ class MediaStreamInput:
                 # Stream video to temp file to avoid loading entire video into RAM
                 temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
                 try:
-                    logger.info(f"ℹ️\u2009 Nilor-Nodes (MediaStreamInput): Streaming video to temp file: {temp_file.name}")
+                    logger.info(
+                        f"ℹ️\u2009 Nilor-Nodes (MediaStreamInput): Streaming video to temp file: {temp_file.name}")
                     with requests.get(presigned_download_url, timeout=180, stream=True) as response:
                         response.raise_for_status()
                         for chunk in response.iter_content(chunk_size=8192):
@@ -116,7 +117,7 @@ class MediaStreamInput:
                 response = requests.get(presigned_download_url, timeout=180)
                 response.raise_for_status()
                 media_bytes = response.content
-                
+
                 if format == "image":
                     return self._process_image(media_bytes)
                 else:
@@ -175,32 +176,37 @@ class MediaStreamInput:
 
     def _process_video(self, video_path):
         logger.info(f"ℹ️\u2009 Nilor-Nodes (MediaStreamInput): Processing video from {video_path}...")
-        
+
         # Open video to get metadata first
         with imageio.get_reader(video_path, format="mp4") as reader:
             # Get video metadata
             metadata = reader.get_meta_data()
             num_frames = reader.count_frames()
-            
+
             if num_frames == 0:
                 raise ValueError(
                     "🛑\u2009 Nilor-Nodes (MediaStreamInput): No frames could be read from the video."
                 )
-            
+
             # Read first frame to get dimensions
             first_frame = reader.get_data(0)
             height, width = first_frame.shape[:2]
-            
+
             logger.info(
                 f"ℹ️\u2009 Nilor-Nodes (MediaStreamInput): Video has {num_frames} frames at {width}x{height}"
             )
-            
+
             # Pre-allocate tensor for all frames (N, H, W, 3)
             video_tensor = torch.empty((num_frames, height, width, 3), dtype=torch.float32)
-            
-            # Fill tensor in-place, reading one frame at a time
-            for i, frame in enumerate(reader):
-                # Convert frame to RGB and normalize to [0, 1]
+
+            # Process first frame (already read for dimensions)
+            pil_image = Image.fromarray(first_frame).convert("RGB")
+            numpy_image = np.array(pil_image).astype(np.float32) / 255.0
+            video_tensor[0] = torch.from_numpy(numpy_image)
+
+            # Read remaining frames by explicit index to avoid iterator position ambiguity
+            for i in range(1, num_frames):
+                frame = reader.get_data(i)
                 pil_image = Image.fromarray(frame).convert("RGB")
                 numpy_image = np.array(pil_image).astype(np.float32) / 255.0
                 video_tensor[i] = torch.from_numpy(numpy_image)
@@ -270,21 +276,21 @@ class MediaStreamOutput:
     CATEGORY = category + subcategories["streaming"]
 
     def upload_and_notify(
-        self,
-        images,
-        format,
-        content_id,
-        venue,
-        canvas,
-        scene,
-        presigned_upload_url,
-        job_completions_queue_url,
-        output_object_keys,
-        framerate,
-        output_name: str = "default_output",
-        prompt=None,
-        extra_pnginfo=None,
-        job_type: str | None = None,
+            self,
+            images,
+            format,
+            content_id,
+            venue,
+            canvas,
+            scene,
+            presigned_upload_url,
+            job_completions_queue_url,
+            output_object_keys,
+            framerate,
+            output_name: str = "default_output",
+            prompt=None,
+            extra_pnginfo=None,
+            job_type: str | None = None,
     ):
         if not content_id:
             raise ValueError(
