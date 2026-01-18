@@ -8,6 +8,8 @@ import imageio.v2 as imageio
 import mimetypes
 import boto3
 import json
+import tempfile
+import os
 from .logger import logger
 from .config.config import load_nilor_nodes_config
 
@@ -94,19 +96,34 @@ class MediaStreamInput:
                 return self._process_image_batch(asset_responses)
 
             # --- Single-file download ---
-            response = requests.get(presigned_download_url, timeout=180)
-            response.raise_for_status()
-            media_bytes = response.content
-
             if format == "video":
-                return self._process_video(media_bytes)
-            elif format == "image":
-                return self._process_image(media_bytes)
+                # Stream video to temp file to avoid loading entire video into RAM
+                temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
+                try:
+                    logger.info(f"ℹ️\u2009 Nilor-Nodes (MediaStreamInput): Streaming video to temp file: {temp_file.name}")
+                    with requests.get(presigned_download_url, timeout=180, stream=True) as response:
+                        response.raise_for_status()
+                        for chunk in response.iter_content(chunk_size=8192):
+                            temp_file.write(chunk)
+                    temp_file.close()
+                    return self._process_video(temp_file.name)
+                finally:
+                    # Clean up temp file
+                    if os.path.exists(temp_file.name):
+                        os.unlink(temp_file.name)
             else:
-                # Should not happen if UI choices are respected
-                raise ValueError(
-                    f"🛑\u2009 Nilor-Nodes (MediaStreamInput): Unsupported format '{format}' for single media download."
-                )
+                # For images, load into memory (they're small)
+                response = requests.get(presigned_download_url, timeout=180)
+                response.raise_for_status()
+                media_bytes = response.content
+                
+                if format == "image":
+                    return self._process_image(media_bytes)
+                else:
+                    # Should not happen if UI choices are respected
+                    raise ValueError(
+                        f"🛑\u2009 Nilor-Nodes (MediaStreamInput): Unsupported format '{format}' for single media download."
+                    )
 
         except requests.RequestException as e:
             logger.error(
@@ -156,27 +173,40 @@ class MediaStreamInput:
         logger.info("✅ Nilor-Nodes (MediaStreamInput): Image processing successful.")
         return (image_tensor,)
 
-    def _process_video(self, video_bytes):
-        logger.info("ℹ️\u2009 Nilor-Nodes (MediaStreamInput): Processing as video...")
-        frames = []
-        with imageio.get_reader(io.BytesIO(video_bytes), format="mp4") as reader:
-            for frame in reader:
-                # Convert frame to RGB PIL Image and then to tensor
+    def _process_video(self, video_path):
+        logger.info(f"ℹ️\u2009 Nilor-Nodes (MediaStreamInput): Processing video from {video_path}...")
+        
+        # Open video to get metadata first
+        with imageio.get_reader(video_path, format="mp4") as reader:
+            # Get video metadata
+            metadata = reader.get_meta_data()
+            num_frames = reader.count_frames()
+            
+            if num_frames == 0:
+                raise ValueError(
+                    "🛑\u2009 Nilor-Nodes (MediaStreamInput): No frames could be read from the video."
+                )
+            
+            # Read first frame to get dimensions
+            first_frame = reader.get_data(0)
+            height, width = first_frame.shape[:2]
+            
+            logger.info(
+                f"ℹ️\u2009 Nilor-Nodes (MediaStreamInput): Video has {num_frames} frames at {width}x{height}"
+            )
+            
+            # Pre-allocate tensor for all frames (N, H, W, 3)
+            video_tensor = torch.empty((num_frames, height, width, 3), dtype=torch.float32)
+            
+            # Fill tensor in-place, reading one frame at a time
+            for i, frame in enumerate(reader):
+                # Convert frame to RGB and normalize to [0, 1]
                 pil_image = Image.fromarray(frame).convert("RGB")
                 numpy_image = np.array(pil_image).astype(np.float32) / 255.0
-                tensor_frame = torch.from_numpy(numpy_image)
-                frames.append(tensor_frame)
+                video_tensor[i] = torch.from_numpy(numpy_image)
 
-        if not frames:
-            raise ValueError(
-                "🛑\u2009 Nilor-Nodes (MediaStreamInput): No frames could be read from the video."
-            )
-
-        # Stack frames into a single tensor (batch of images)
-        video_tensor = torch.stack(frames)
-
-        logging.info(
-            f"✅ Nilor-Nodes (MediaStreamInput): Video processing successful. Image Shape: {video_tensor.shape}"
+        logger.info(
+            f"✅ Nilor-Nodes (MediaStreamInput): Video processing successful. Tensor shape: {video_tensor.shape}"
         )
         return (video_tensor,)
 
