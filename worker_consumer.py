@@ -29,6 +29,10 @@ from .config.config import load_nilor_nodes_config, NilorNodesConfig
 _CFG: NilorNodesConfig = load_nilor_nodes_config()
 
 
+class JobSubmissionError(Exception):
+    """Raised when a job cannot be submitted to local ComfyUI."""
+
+
 class WorkerConsumer:
     def __init__(self, cfg: NilorNodesConfig):
         self.session = get_session()
@@ -397,7 +401,19 @@ class WorkerConsumer:
                 return
 
             # Submit to ComfyUI
-            await self._submit_job_to_comfyui(content_id, job_payload)
+            try:
+                await self._submit_job_to_comfyui(content_id, job_payload)
+            except JobSubmissionError as e:
+                logger.error(
+                    f"🛑\u2009 Nilor-Nodes (worker_consumer): Submission failed for content_id {content_id}: {e}. Message will be retried/DLQ'd."
+                )
+                await self._emit_failed_status_for_submission_error(
+                    content_id=content_id,
+                    job_payload=job_payload,
+                    error_message=str(e),
+                )
+                # Re-raise so consume_loop does not delete the message.
+                raise
 
             # Cache context for subsequent status updates
             try:
@@ -417,6 +433,28 @@ class WorkerConsumer:
             )
             # Re-raise to prevent deletion from queue if we want SQS to handle retry
             raise
+
+    async def _emit_failed_status_for_submission_error(
+        self, content_id, job_payload, error_message: str
+    ):
+        """Best-effort failed status emission for submit-time errors."""
+        policy = job_payload.get("status_policy") or {}
+        fail_status = policy.get("fail_status", "failed")
+
+        await self._send_status_update(
+            content_id,
+            fail_status,
+            job_payload.get("venue"),
+            job_payload.get("canvas"),
+            job_payload.get("scene"),
+            job_payload.get("job_type"),
+        )
+        logger.info(
+            "ℹ️\u2009 Nilor-Nodes (worker_consumer): Emitted failed status '%s' for content_id %s after submit error: %s",
+            fail_status,
+            content_id,
+            error_message,
+        )
 
     async def _submit_job_to_comfyui(self, content_id, workflow_data):
         """Submits a single job to the ComfyUI API."""
@@ -484,15 +522,18 @@ class WorkerConsumer:
             logger.error(
                 f"🛑\u2009 Nilor-Nodes (worker_consumer): Failed to submit job to ComfyUI: {e}. Message will be retried."
             )
+            raise JobSubmissionError(str(e)) from e
         except (json.JSONDecodeError, KeyError) as e:
             logger.error(
-                f"🛑\u2009 Nilor-Nodes (worker_consumer): Failed to parse ComfyUI response: {e}. Discarding malformed response."
+                f"🛑\u2009 Nilor-Nodes (worker_consumer): Failed to parse ComfyUI response: {e}. Message will be retried."
             )
+            raise JobSubmissionError(f"Malformed ComfyUI response: {e}") from e
         except Exception as e:
             logger.error(
                 f"🛑\u2009 Nilor-Nodes (worker_consumer): An unexpected error occurred while submitting job to ComfyUI: {e}",
                 exc_info=True,
             )
+            raise JobSubmissionError(str(e)) from e
 
     async def _send_status_update(
         self, content_id, status, venue=None, canvas=None, scene=None, job_type=None
