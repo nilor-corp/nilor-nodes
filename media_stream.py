@@ -172,8 +172,14 @@ class MediaStreamInput:
                 "🛑\u2009 Nilor-Nodes (MediaStreamInput): No frames could be read from the video."
             )
 
-        # Stack frames into a single tensor (batch of images)
-        video_tensor = torch.stack(frames)
+        # Pre-allocate output tensor and fill in-place, releasing each frame
+        # reference as we go. torch.stack would keep the full list alive while
+        # allocating a second equally-sized tensor, doubling peak RAM. This
+        # approach keeps peak at ~1× the final tensor size.
+        video_tensor = torch.empty(len(frames), *frames[0].shape, dtype=torch.float32)
+        for i, f in enumerate(frames):
+            video_tensor[i] = f
+            frames[i] = None  # allow GC to reclaim per-frame memory
 
         logging.info(
             f"✅ Nilor-Nodes (MediaStreamInput): Video processing successful. Image Shape: {video_tensor.shape}"
